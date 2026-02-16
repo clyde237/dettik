@@ -1,0 +1,10 @@
+===== supabase_ dettik ====
+db_password : GHfxmZEEZkpY5rvn
+project_url : https://neelplfcsgpxznevaivx.supabase.co
+publishable_key : sb_publishable_dn6PwMUre3Fkv78lWkDJ3g_j41CiBKQ
+anon_key : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lZWxwbGZjc2dweHpuZXZhaXZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExOTA4OTYsImV4cCI6MjA4Njc2Njg5Nn0.qMEJ1cLJsjcX_V7wl_gveqfhZnAXNg2xA3aR6B0FgVY
+service_role : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lZWxwbGZjc2dweHpuZXZhaXZ4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTE5MDg5NiwiZXhwIjoyMDg2NzY2ODk2fQ.1ApzO4kqLrkDFr2gsfrl5u4l24zmZi2yY7i91QgniR4
+
+====== Google console dettik ======
+Id_client : 85760404490-9dhhhjo3kvoig0ukihi010949opvgii4.apps.googleusercontent.com
+secret_client : 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

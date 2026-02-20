@@ -1,14 +1,28 @@
 <script>
-	// Layout principal (sidebar + content)
+  import Sidebar from './Sidebar.svelte';
+  import Header from './Header.svelte';
+  import BottomNav from './BottomNav.svelte';
+  import PageContainer from './PageContainer.svelte';
+
+  /** @type {{ children: import('svelte').Snippet, actions?: import('svelte').Snippet }} */
+  let { children, actions } = $props();
 </script>
 
-<div class="app-shell">
-	<slot />
-</div>
+<div class="flex h-screen bg-gray-50">
+  <!-- Sidebar (desktop: toujours visible, mobile: overlay) -->
+  <Sidebar />
 
-<style>
-	.app-shell {
-		display: flex;
-		height: 100vh;
-	}
-</style>
+  <!-- Zone principale -->
+  <div class="flex-1 flex flex-col min-h-0 w-full">
+    <!-- Header -->
+    <Header {actions} />
+
+    <!-- Contenu de la page -->
+    <PageContainer>
+      {@render children()}
+    </PageContainer>
+  </div>
+
+  <!-- Navigation mobile -->
+  <BottomNav />
+</div>

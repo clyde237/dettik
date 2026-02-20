@@ -1,22 +1,10 @@
 <script>
-	// Wrapper de page avec padding
+  /** @type {{ children: import('svelte').Snippet }} */
+  let { children } = $props();
 </script>
 
-<div class="page-container">
-	<slot />
-</div>
-
-<style>
-	.page-container {
-		flex: 1;
-		padding: 1.5rem;
-		overflow-y: auto;
-	}
-
-	@media (max-width: 768px) {
-		.page-container {
-			padding: 1rem;
-			padding-bottom: 5rem;
-		}
-	}
-</style>
+<main class="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 overflow-y-auto">
+  <div class="max-w-5xl mx-auto">
+    {@render children()}
+  </div>
+</main>

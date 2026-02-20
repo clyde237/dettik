@@ -1,31 +1,36 @@
 <script>
-	// En-tête avec titre + actions
-	export let title = '';
+  import { ui, toggleSidebar } from '$lib/stores/ui';
+  import { Menu } from '@lucide/svelte';
+
+  /** @type {{ actions?: import('svelte').Snippet }} */
+  let { actions } = $props();
 </script>
 
-<header class="header">
-	<h1>{title}</h1>
-	<div class="actions">
-		<slot />
-	</div>
+<header class="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200">
+  <div class="flex items-center justify-between h-16 px-4 lg:px-6">
+    <!-- Gauche : Menu burger (mobile) + Titre -->
+    <div class="flex items-center gap-3">
+      <button
+        class="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+        onclick={toggleSidebar}
+        aria-label="Ouvrir le menu"
+      >
+        <Menu size={22} />
+      </button>
+
+      <div>
+        <h1 class="text-lg font-semibold text-gray-900">{$ui.pageTitle}</h1>
+        {#if $ui.pageDescription}
+          <p class="text-xs text-gray-500">{$ui.pageDescription}</p>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Droite : Actions spécifiques à la page -->
+    {#if actions}
+      <div class="flex items-center gap-2">
+        {@render actions()}
+      </div>
+    {/if}
+  </div>
 </header>
-
-<style>
-	.header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 1rem;
-		border-bottom: 1px solid var(--border-color);
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 1.5rem;
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-</style>

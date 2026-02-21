@@ -1,40 +1,55 @@
 <script>
-	// Button component
-	export let variant = 'primary';
-	export let size = 'md';
-	export let disabled = false;
+  import { Loader2 } from '@lucide/svelte';
+
+  /**
+   * @type {{
+   *   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline',
+   *   size?: 'sm' | 'md' | 'lg',
+   *   loading?: boolean,
+   *   disabled?: boolean,
+   *   type?: 'button' | 'submit' | 'reset',
+   *   class?: string,
+   *   onclick?: (e: MouseEvent) => void,
+   *   children: import('svelte').Snippet
+   * }}
+   */
+  let {
+    variant = 'primary',
+    size = 'md',
+    loading = false,
+    disabled = false,
+    type = 'button',
+    class: className = '',
+    onclick,
+    children
+  } = $props();
+
+  const variants = {
+    primary: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
+    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500',
+    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+    ghost: 'text-gray-600 hover:bg-gray-100 focus:ring-gray-500',
+    outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-green-500'
+  };
+
+  const sizes = {
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-4 py-2.5 text-sm',
+    lg: 'px-6 py-3 text-base'
+  };
 </script>
 
-<button class={`btn btn-${variant} btn-${size}`} {disabled} on:click>
-	<slot />
+<button
+  {type}
+  {onclick}
+  disabled={disabled || loading}
+  class="inline-flex items-center justify-center gap-2 font-medium rounded-lg
+    transition focus:outline-none focus:ring-2 focus:ring-offset-2
+    disabled:opacity-50 disabled:cursor-not-allowed
+    {variants[variant]} {sizes[size]} {className}"
+>
+  {#if loading}
+    <Loader2 size={16} class="animate-spin" />
+  {/if}
+  {@render children()}
 </button>
-
-<style>
-	.btn {
-		padding: 0.5rem 1rem;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: all 0.2s;
-	}
-
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-primary {
-		background: var(--primary);
-		color: white;
-	}
-
-	.btn-secondary {
-		background: var(--secondary);
-		color: white;
-	}
-
-	.btn-md {
-		font-size: 1rem;
-	}
-</style>

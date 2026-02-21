@@ -1,46 +1,44 @@
 <script>
-	// FloatingActionButton component - FAB (mobile)
-	export let icon = '+';
-	export let onClick = () => {};
+  import { Plus } from '@lucide/svelte';
+
+  /**
+   * @type {{
+   *   href?: string,
+   *   onclick?: () => void,
+   *   icon?: import('svelte').Component,
+   *   label?: string,
+   *   class?: string
+   * }}
+   */
+  let {
+    href = '',
+    onclick,
+    icon: Icon = Plus,
+    label = 'Ajouter',
+    class: className = ''
+  } = $props();
 </script>
 
-<button class="fab" on:click={onClick} title="Ajouter">
-	{icon}
-</button>
-
-<style>
-	.fab {
-		position: fixed;
-		bottom: 2rem;
-		right: 2rem;
-		width: 56px;
-		height: 56px;
-		border-radius: 50%;
-		background: var(--primary);
-		color: white;
-		border: none;
-		font-size: 1.5rem;
-		cursor: pointer;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-		transition: all 0.2s;
-		display: none;
-	}
-
-	.fab:hover {
-		transform: scale(1.1);
-		box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-	}
-
-	.fab:active {
-		transform: scale(0.95);
-	}
-
-	@media (max-width: 768px) {
-		.fab {
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			bottom: 5.5rem;
-		}
-	}
-</style>
+{#if href}
+  <a
+    {href}
+    aria-label={label}
+    class="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 z-30
+      w-14 h-14 bg-green-600 text-white rounded-full shadow-lg
+      flex items-center justify-center
+      hover:bg-green-700 active:scale-95 transition {className}"
+  >
+    <Icon size={24} />
+  </a>
+{:else}
+  <button
+    {onclick}
+    aria-label={label}
+    class="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 z-30
+      w-14 h-14 bg-green-600 text-white rounded-full shadow-lg
+      flex items-center justify-center
+      hover:bg-green-700 active:scale-95 transition {className}"
+  >
+    <Icon size={24} />
+  </button>
+{/if}

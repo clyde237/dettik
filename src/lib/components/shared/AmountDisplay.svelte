@@ -1,46 +1,37 @@
 <script>
-	// AmountDisplay component - Affichage montant formaté
-	export let amount = 0;
-	export let currency = 'EUR';
-	export let size = 'md';
-	export let type = 'debt';
+  import { formatAmount } from '$lib/utils/currency';
 
-	const formatter = new Intl.NumberFormat('fr-FR', {
-		style: 'currency',
-		currency: currency,
-	});
+  /**
+   * @type {{
+   *   amount: number,
+   *   currency?: string,
+   *   size?: 'sm' | 'md' | 'lg',
+   *   colored?: boolean,
+   *   class?: string
+   * }}
+   */
+  let {
+    amount = 0,
+    currency = 'XAF',
+    size = 'md',
+    colored = false,
+    class: className = ''
+  } = $props();
+
+  const sizes = {
+    sm: 'text-sm',
+    md: 'text-base',
+    lg: 'text-2xl'
+  };
+
+  let colorClass = $derived(
+    !colored ? 'text-gray-900' :
+    amount > 0 ? 'text-green-600' :
+    amount < 0 ? 'text-red-600' :
+    'text-gray-500'
+  );
 </script>
 
-<span class={`amount amount-${size} amount-${type}`}>
-	{formatter.format(amount)}
+<span class="font-semibold {sizes[size]} {colorClass} {className}">
+  {formatAmount(amount, currency)}
 </span>
-
-<style>
-	.amount {
-		font-weight: 600;
-	}
-
-	.amount-sm {
-		font-size: 0.875rem;
-	}
-
-	.amount-md {
-		font-size: 1rem;
-	}
-
-	.amount-lg {
-		font-size: 1.5rem;
-	}
-
-	.amount-debt {
-		color: var(--danger);
-	}
-
-	.amount-credit {
-		color: var(--success);
-	}
-
-	.amount-neutral {
-		color: var(--text-primary);
-	}
-</style>

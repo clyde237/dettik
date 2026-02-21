@@ -1,16 +1,18 @@
 <script>
-	// Card component
+  /**
+   * @type {{
+   *   class?: string,
+   *   padding?: boolean,
+   *   children: import('svelte').Snippet
+   * }}
+   */
+  let {
+    class: className = '',
+    padding = true,
+    children
+  } = $props();
 </script>
 
-<div class="card">
-	<slot />
+<div class="bg-white rounded-xl border border-gray-200 {padding ? 'p-5' : ''} {className}">
+  {@render children()}
 </div>
-
-<style>
-	.card {
-		background: var(--bg-secondary);
-		border-radius: 0.5rem;
-		border: 1px solid var(--border-color);
-		overflow: hidden;
-	}
-</style>

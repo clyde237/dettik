@@ -1,52 +1,46 @@
 <script>
-	// SearchInput component
-	export let value = '';
-	export let placeholder = 'Rechercher...';
+  import { Search, X } from '@lucide/svelte';
+
+  /**
+   * @type {{
+   *   value?: string,
+   *   placeholder?: string,
+   *   class?: string,
+   *   oninput?: (e: Event) => void
+   * }}
+   */
+  let {
+    value = $bindable(''),
+    placeholder = 'Rechercher...',
+    class: className = '',
+    oninput
+  } = $props();
+
+  function clear() {
+    value = '';
+  }
 </script>
 
-<div class="search-input">
-	<input
-		type="text"
-		{placeholder}
-		bind:value
-		on:input
-		on:focus
-		on:blur
-	/>
-	{#if value}
-		<button class="clear-btn" on:click={() => (value = '')}>&times;</button>
-	{/if}
+<div class="relative {className}">
+  <Search class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+
+  <input
+    type="text"
+    {placeholder}
+    {oninput}
+    bind:value
+    class="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm
+      bg-white outline-none transition
+      focus:ring-2 focus:ring-green-500 focus:border-green-500"
+  />
+
+  {#if value}
+    <button
+      type="button"
+      onclick={clear}
+      class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+    >
+      <X size={16} />
+    </button>
+  {/if}
 </div>
-
-<style>
-	.search-input {
-		position: relative;
-		display: flex;
-		align-items: center;
-	}
-
-	input {
-		flex: 1;
-		padding: 0.5rem;
-		padding-right: 2rem;
-		border: 1px solid var(--border-color);
-		border-radius: 0.375rem;
-		font-size: 1rem;
-		transition: border-color 0.2s;
-	}
-
-	input:focus {
-		outline: none;
-		border-color: var(--primary);
-	}
-
-	.clear-btn {
-		position: absolute;
-		right: 0.5rem;
-		background: none;
-		border: none;
-		font-size: 1.25rem;
-		cursor: pointer;
-		color: var(--text-secondary);
-	}
-</style>

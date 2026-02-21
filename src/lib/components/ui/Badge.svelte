@@ -1,38 +1,33 @@
 <script>
-	// Badge component
-	export let variant = 'primary';
+  /**
+   * @type {{
+   *   variant?: 'default' | 'success' | 'danger' | 'warning' | 'info',
+   *   size?: 'sm' | 'md',
+   *   class?: string,
+   *   children: import('svelte').Snippet
+   * }}
+   */
+  let {
+    variant = 'default',
+    size = 'sm',
+    class: className = '',
+    children
+  } = $props();
+
+  const variants = {
+    default: 'bg-gray-100 text-gray-700',
+    success: 'bg-green-50 text-green-700',
+    danger: 'bg-red-50 text-red-700',
+    warning: 'bg-yellow-50 text-yellow-700',
+    info: 'bg-blue-50 text-blue-700'
+  };
+
+  const sizes = {
+    sm: 'px-2 py-0.5 text-xs',
+    md: 'px-2.5 py-1 text-sm'
+  };
 </script>
 
-<span class={`badge badge-${variant}`}>
-	<slot />
+<span class="inline-flex items-center gap-1 font-medium rounded-full {variants[variant]} {sizes[size]} {className}">
+  {@render children()}
 </span>
-
-<style>
-	.badge {
-		display: inline-block;
-		padding: 0.25rem 0.75rem;
-		border-radius: 999px;
-		font-size: 0.875rem;
-		font-weight: 600;
-	}
-
-	.badge-primary {
-		background: var(--primary);
-		color: white;
-	}
-
-	.badge-success {
-		background: var(--success);
-		color: white;
-	}
-
-	.badge-danger {
-		background: var(--danger);
-		color: white;
-	}
-
-	.badge-warning {
-		background: var(--warning);
-		color: white;
-	}
-</style>

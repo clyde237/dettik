@@ -1,24 +1,12 @@
 <script>
-	// ToastContainer component
+  import { toasts } from '$lib/stores/notifications';
+  import Toast from './Toast.svelte';
 </script>
 
-<div class="toast-container">
-	<slot />
-</div>
-
-<style>
-	.toast-container {
-		position: fixed;
-		bottom: 1.5rem;
-		right: 1.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		z-index: 999;
-		pointer-events: none;
-	}
-
-	:global(.toast-container > *) {
-		pointer-events: auto;
-	}
-</style>
+{#if $toasts.length > 0}
+  <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 w-80">
+    {#each $toasts as toast (toast.id)}
+      <Toast id={toast.id} type={toast.type} message={toast.message} />
+    {/each}
+  </div>
+{/if}

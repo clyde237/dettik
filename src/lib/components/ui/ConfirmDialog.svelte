@@ -1,94 +1,64 @@
 <script>
-	// ConfirmDialog component
-	export let open = false;
-	export let title = '';
-	export let message = '';
-	export let confirmText = 'Confirmer';
-	export let cancelText = 'Annuler';
+  import Modal from './Modal.svelte';
+  import Button from './Button.svelte';
+  import { TriangleAlert } from '@lucide/svelte';
 
-	export let onConfirm = () => {};
-	export let onCancel = () => {};
+  /**
+   * @type {{
+   *   open?: boolean,
+   *   title?: string,
+   *   message?: string,
+   *   confirmLabel?: string,
+   *   cancelLabel?: string,
+   *   variant?: 'danger' | 'warning',
+   *   loading?: boolean,
+   *   onconfirm?: () => void,
+   *   oncancel?: () => void
+   * }}
+   */
+  let {
+    open = $bindable(false),
+    title = 'Confirmation',
+    message = 'Êtes-vous sûr ?',
+    confirmLabel = 'Confirmer',
+    cancelLabel = 'Annuler',
+    variant = 'danger',
+    loading = false,
+    onconfirm,
+    oncancel
+  } = $props();
+
+  function handleCancel() {
+    open = false;
+    oncancel?.();
+  }
+
+  function handleConfirm() {
+    onconfirm?.();
+  }
 </script>
 
-{#if open}
-	<div class="dialog-backdrop">
-		<div class="dialog">
-			<div class="dialog-header">
-				<h2>{title}</h2>
-			</div>
-			<div class="dialog-body">
-				<p>{message}</p>
-			</div>
-			<div class="dialog-footer">
-				<button class="btn-cancel" on:click={onCancel}>{cancelText}</button>
-				<button class="btn-confirm" on:click={onConfirm}>{confirmText}</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<Modal bind:open size="sm" onclose={handleCancel}>
+  <div class="text-center">
+    <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4
+      {variant === 'danger' ? 'bg-red-100' : 'bg-yellow-100'}">
+      <TriangleAlert size={24} class={variant === 'danger' ? 'text-red-600' : 'text-yellow-600'} />
+    </div>
 
-<style>
-	.dialog-backdrop {
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: rgba(0, 0, 0, 0.5);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 1001;
-	}
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+    <p class="text-sm text-gray-500">{message}</p>
+  </div>
 
-	.dialog {
-		background: var(--bg-primary);
-		border-radius: 0.5rem;
-		max-width: 400px;
-		width: 90%;
-	}
-
-	.dialog-header {
-		padding: 1.5rem;
-		border-bottom: 1px solid var(--border-color);
-	}
-
-	.dialog-header h2 {
-		margin: 0;
-	}
-
-	.dialog-body {
-		padding: 1.5rem;
-	}
-
-	.dialog-body p {
-		margin: 0;
-		color: var(--text-secondary);
-	}
-
-	.dialog-footer {
-		display: flex;
-		gap: 1rem;
-		padding: 1.5rem;
-		border-top: 1px solid var(--border-color);
-	}
-
-	button {
-		flex: 1;
-		padding: 0.5rem;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-	}
-
-	.btn-cancel {
-		background: var(--bg-secondary);
-		color: var(--text-primary);
-	}
-
-	.btn-confirm {
-		background: var(--primary);
-		color: white;
-	}
-</style>
+  {#snippet footer()}
+    <Button variant="secondary" onclick={handleCancel} disabled={loading}>
+      {cancelLabel}
+    </Button>
+    <Button
+      variant={variant === 'danger' ? 'danger' : 'primary'}
+      onclick={handleConfirm}
+      {loading}
+    >
+      {confirmLabel}
+    </Button>
+  {/snippet}
+</Modal>

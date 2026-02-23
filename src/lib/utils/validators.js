@@ -90,3 +90,28 @@ export function extractErrors(zodError) {
   }
   return errors;
 }
+
+// ============================================
+// Schéma : Personne
+// ============================================
+export const personSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Le nom doit contenir au moins 2 caractères')
+    .max(100, 'Le nom ne peut pas dépasser 100 caractères'),
+  phone: z
+    .string()
+    .max(20, 'Numéro trop long')
+    .optional()
+    .or(z.literal('')),
+  email: z
+    .string()
+    .email('Format d\'email invalide')
+    .optional()
+    .or(z.literal('')),
+  notes: z
+    .string()
+    .max(500, 'Les notes ne peuvent pas dépasser 500 caractères')
+    .optional()
+    .or(z.literal(''))
+});

@@ -115,3 +115,42 @@ export const personSchema = z.object({
     .optional()
     .or(z.literal(''))
 });
+
+// ============================================
+// Schéma : Dette / Créance
+// ============================================
+export const debtSchema = z.object({
+  type: z
+    .enum(['debt', 'credit'], {
+      required_error: 'Le type est requis',
+      invalid_type_error: 'Type invalide'
+    }),
+  total_amount: z
+    .number({
+      required_error: 'Le montant est requis',
+      invalid_type_error: 'Le montant doit être un nombre'
+    })
+    .positive('Le montant doit être supérieur à 0'),
+  currency: z
+    .string()
+    .default('XAF'),
+  description: z
+    .string()
+    .max(500, 'La description ne peut pas dépasser 500 caractères')
+    .optional()
+    .or(z.literal('')),
+  loan_date: z
+    .string()
+    .min(1, 'La date est requise'),
+  due_date: z
+    .string()
+    .optional()
+    .or(z.literal('')),
+  interest_rate: z
+    .number()
+    .min(0, 'Le taux ne peut pas être négatif')
+    .max(100, 'Le taux ne peut pas dépasser 100%')
+    .optional()
+    .or(z.literal(0))
+    .or(z.nan().transform(() => undefined))
+});

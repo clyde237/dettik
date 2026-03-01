@@ -1,136 +1,167 @@
-import { supabase } from '$lib/supabase/client';
+import { writable, derived } from 'svelte/store';
+import {
+  getPersons,
+  createPerson,
+  updatePerson,
+  deletePerson,
+  searchPersons
+} from '$lib/services/persons.service';
+import { toastSuccess, toastError } from '$lib/stores/notifications';
 
 /**
- * Récupérer toutes les personnes de l'utilisateur connecté
- * @returns {Promise<import('$lib/stores/persons').Person[]>}
+ * @typedef {Object} Person
+ * @property {string} id
+ * @property {string} user_id
+ * @property {string} name
+ * @property {string|null} phone
+ * @property {string|null} email
+ * @property {string|null} notes
+ * @property {string} created_at
+ * @property {string} updated_at
  */
-export async function getPersons() {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .order('name', { ascending: true });
-
-  if (error) throw error;
-  return data || [];
-}
 
 /**
- * Récupérer une personne par son ID
- * @param {string} id
- * @returns {Promise<import('$lib/stores/persons').Person>}
+ * @typedef {Object} PersonsState
+ * @property {Person[]} list
+ * @property {boolean} loading
+ * @property {boolean} loaded
+ * @property {string} searchQuery
  */
-export async function getPerson(id) {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .eq('id', id)
-    .single();
 
-  if (error) throw error;
-  return data;
-}
+/** @type {import('svelte/store').Writable<PersonsState>} */
+export const persons = writable({
+  list: [],
+  loading: false,
+  loaded: false,
+  searchQuery: ''
+});
 
 /**
- * Rechercher des personnes par nom (autocomplétion)
- * @param {string} query
- * @returns {Promise<import('$lib/stores/persons').Person[]>}
+ * Liste filtrée par la recherche
  */
-export async function searchPersons(query) {
-  if (!query || query.trim().length < 1) {
-    return getPersons();
+export const filteredPersons = derived(persons, ($persons) => {
+  const query = $persons.searchQuery.toLowerCase().trim();
+
+  if (!query) return $persons.list;
+
+  return $persons.list.filter((person) =>
+    person.name.toLowerCase().includes(query) ||
+    person.phone?.toLowerCase().includes(query) ||
+    person.email?.toLowerCase().includes(query)
+  );
+});
+
+/**
+ * Charger toutes les personnes depuis Supabase
+ */
+export async function loadPersons() {
+  persons.update((state) => ({ ...state, loading: true }));
+
+  try {
+    const data = await getPersons();
+    persons.update((state) => ({
+      ...state,
+      list: data,
+      loading: false,
+      loaded: true
+    }));
+  } catch (err) {
+    persons.update((state) => ({ ...state, loading: false }));
+    toastError('Erreur lors du chargement des personnes');
+    console.error(err);
   }
-
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .ilike('name', `%${query.trim()}%`)
-    .order('name', { ascending: true })
-    .limit(10);
-
-  if (error) throw error;
-  return data || [];
 }
 
 /**
- * Créer une nouvelle personne
- * @param {{ name: string, phone?: string, email?: string, notes?: string }} params
- * @returns {Promise<import('$lib/stores/persons').Person>}
+ * Ajouter une personne
+ * @param {{ name: string, phone?: string, email?: string, notes?: string }} data
+ * @returns {Promise<Person|null>}
  */
-export async function createPerson({ name, phone, email, notes }) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Non connecté');
+export async function addPerson(data) {
+  try {
+    const newPerson = await createPerson(data);
 
-  const personData = {
-    user_id: user.id,
-    name: name.trim(),
-    phone: phone?.trim() || null,
-    email: email?.trim() || null,
-    notes: notes?.trim() || null
-  };
+    persons.update((state) => ({
+      ...state,
+      list: [...state.list, newPerson].sort((a, b) => a.name.localeCompare(b.name))
+    }));
 
-  const { data, error } = await supabase
-    .from('persons')
-    .insert(personData)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+    toastSuccess(`${newPerson.name} ajouté(e)`);
+    return newPerson;
+  } catch (err) {
+    toastError('Erreur lors de l\'ajout de la personne');
+    console.error(err);
+    return null;
+  }
 }
 
 /**
- * Mettre à jour une personne
+ * Modifier une personne
  * @param {string} id
- * @param {{ name?: string, phone?: string, email?: string, notes?: string }} updates
- * @returns {Promise<import('$lib/stores/persons').Person>}
+ * @param {{ name?: string, phone?: string, email?: string, notes?: string }} data
+ * @returns {Promise<Person|null>}
  */
-export async function updatePerson(id, updates) {
-  /** @type {Record<string, any>} */
-  const cleanUpdates = {};
+export async function editPerson(id, data) {
+  try {
+    const updated = await updatePerson(id, data);
 
-  if (updates.name !== undefined) cleanUpdates.name = updates.name.trim();
-  if (updates.phone !== undefined) cleanUpdates.phone = updates.phone.trim() || null;
-  if (updates.email !== undefined) cleanUpdates.email = updates.email.trim() || null;
-  if (updates.notes !== undefined) cleanUpdates.notes = updates.notes.trim() || null;
+    persons.update((state) => ({
+      ...state,
+      list: state.list
+        .map((p) => (p.id === id ? updated : p))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    }));
 
-  const { data, error } = await supabase
-    .from('persons')
-    .update(cleanUpdates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+    toastSuccess('Personne modifiée');
+    return updated;
+  } catch (err) {
+    toastError('Erreur lors de la modification');
+    console.error(err);
+    return null;
+  }
 }
 
 /**
  * Supprimer une personne
  * @param {string} id
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>}
  */
-export async function deletePerson(id) {
-  const { error } = await supabase
-    .from('persons')
-    .delete()
-    .eq('id', id);
+export async function removePerson(id) {
+  try {
+    await deletePerson(id);
 
-  if (error) throw error;
+    persons.update((state) => ({
+      ...state,
+      list: state.list.filter((p) => p.id !== id)
+    }));
+
+    toastSuccess('Personne supprimée');
+    return true;
+  } catch (err) {
+    toastError('Erreur lors de la suppression');
+    console.error(err);
+    return false;
+  }
 }
 
 /**
- * Vérifier si une personne avec ce nom existe déjà
- * @param {string} name
- * @returns {Promise<import('$lib/stores/persons').Person | null>}
+ * Mettre à jour la recherche
+ * @param {string} query
  */
-export async function findPersonByName(name) {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .ilike('name', name.trim())
-    .limit(1)
-    .maybeSingle();
+export function setSearchQuery(query) {
+  persons.update((state) => ({ ...state, searchQuery: query }));
+}
 
-  if (error) throw error;
-  return data;
+/**
+ * Rechercher des personnes via Supabase (pour l'autocomplétion)
+ * @param {string} query
+ * @returns {Promise<Person[]>}
+ */
+export async function searchPersonsStore(query) {
+  try {
+    return await searchPersons(query);
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
 }

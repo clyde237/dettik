@@ -1,58 +1,47 @@
 <script>
-	// ArchiveFilters component - Filtres archives
-	export let filters = { type: '', dateRange: '' };
+  import SearchInput from '$lib/components/ui/SearchInput.svelte';
+  import Tabs from '$lib/components/ui/Tabs.svelte';
+
+  /**
+   * @type {{
+   *   search?: string,
+   *   typeFilter?: 'all' | 'debt' | 'credit',
+   *   onsearch?: (value: string) => void,
+   *   onfilter?: (value: string) => void
+   * }}
+   */
+  let {
+    search = $bindable(''),
+    typeFilter = $bindable('all'),
+    onsearch,
+    onfilter
+  } = $props();
+
+  const tabs = [
+    { value: 'all', label: 'Tous' },
+    { value: 'debt', label: 'Dettes' },
+    { value: 'credit', label: 'Créances' }
+  ];
+
+  /**
+   * @param {string} value
+   */
+  function handleFilterChange(value) {
+    typeFilter = /** @type {'all' | 'debt' | 'credit'} */ (value);
+    onfilter?.(value);
+  }
 </script>
 
-<div class="archive-filters">
-	<div class="filter-group">
-		<select bind:value={filters.type} on:change>
-			<option value="">Tous les types</option>
-			<option value="debt">Dettes</option>
-			<option value="credit">Créances</option>
-		</select>
-	</div>
+<div class="space-y-3">
+  <Tabs
+    items={tabs}
+    bind:value={typeFilter}
+    onchange={handleFilterChange}
+  />
 
-	<div class="filter-group">
-		<input
-			type="text"
-			placeholder="Rechercher..."
-			on:input
-		/>
-	</div>
-
-	<slot />
+  <SearchInput
+    bind:value={search}
+    placeholder="Rechercher dans les archives..."
+    oninput={() => onsearch?.(search)}
+  />
 </div>
-
-<style>
-	.archive-filters {
-		display: flex;
-		gap: 1rem;
-		padding: 1rem;
-		background: var(--bg-secondary);
-		border-radius: 0.5rem;
-		flex-wrap: wrap;
-	}
-
-	.filter-group {
-		flex: 1;
-		min-width: 200px;
-	}
-
-	input,
-	select {
-		width: 100%;
-		padding: 0.5rem;
-		border: 1px solid var(--border-color);
-		border-radius: 0.375rem;
-	}
-
-	@media (max-width: 768px) {
-		.archive-filters {
-			flex-direction: column;
-		}
-
-		.filter-group {
-			min-width: auto;
-		}
-	}
-</style>

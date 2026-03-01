@@ -8,6 +8,7 @@
   import DateDisplay from '$lib/components/shared/DateDisplay.svelte';
   import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
   import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+  import PaymentHistory from '$lib/components/payment/PaymentHistory.svelte';
   import { formatAmount } from '$lib/utils/currency';
   import { daysUntil } from '$lib/utils/date';
   import { removeCredit, archiveCreditStore } from '$lib/stores/credits';
@@ -128,7 +129,7 @@
     <ProgressBar value={received} max={Number(credit.total_amount)} />
   </Card>
 
-  <!-- Informations détaillées -->
+  <!-- Informations -->
   <Card>
     <h3 class="text-sm font-semibold text-gray-900 mb-4">Informations</h3>
 
@@ -212,7 +213,12 @@
     </Card>
   {/if}
 
-  <!-- Bouton ajouter un remboursement -->
+  <!-- Historique des remboursements -->
+  <Card>
+    <PaymentHistory debtId={credit.id} currency={credit.currency} type="credit" />
+  </Card>
+
+  <!-- Bouton ajouter remboursement -->
   {#if credit.status === 'active' && Number(credit.remaining_amount) > 0}
     <Button
       variant="primary"

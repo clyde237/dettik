@@ -154,3 +154,44 @@ export const debtSchema = z.object({
     .or(z.literal(0))
     .or(z.nan().transform(() => undefined))
 });
+
+// ============================================
+// Schéma : Versement / Remboursement
+// ============================================
+export const paymentSchema = z.object({
+  amount: z
+    .number({
+      required_error: 'Le montant est requis',
+      invalid_type_error: 'Le montant doit être un nombre'
+    })
+    .positive('Le montant doit être supérieur à 0'),
+  payment_date: z
+    .string()
+    .min(1, 'La date est requise'),
+  payment_method: z
+    .string()
+    .min(1, 'La méthode de paiement est requise'),
+  notes: z
+    .string()
+    .max(500, 'Les notes ne peuvent pas dépasser 500 caractères')
+    .optional()
+    .or(z.literal(''))
+});
+
+// ============================================
+// Schéma : Preuve de paiement (validation fichier)
+// ============================================
+export const proofSchema = z.object({
+  file_name: z
+    .string()
+    .min(1, 'Nom de fichier requis'),
+  file_type: z
+    .string()
+    .refine(
+      (type) => ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type),
+      'Format accepté : JPG, PNG, WebP ou PDF'
+    ),
+  file_size: z
+    .number()
+    .max(5 * 1024 * 1024, 'Le fichier ne doit pas dépasser 5 MB')
+});

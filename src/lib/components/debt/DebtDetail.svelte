@@ -8,6 +8,7 @@
   import DateDisplay from '$lib/components/shared/DateDisplay.svelte';
   import StatusBadge from '$lib/components/shared/StatusBadge.svelte';
   import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+  import PaymentHistory from '$lib/components/payment/PaymentHistory.svelte';
   import { formatAmount } from '$lib/utils/currency';
   import { daysUntil } from '$lib/utils/date';
   import { removeDebt, archiveDebtStore } from '$lib/stores/debts';
@@ -93,7 +94,6 @@
         </div>
       </div>
 
-      <!-- Actions -->
       {#if debt.status === 'active'}
         <div class="flex items-center gap-2">
           <Button variant="ghost" size="sm" onclick={() => goto(`/debts/${debt.id}/edit`)}>
@@ -129,18 +129,16 @@
     <ProgressBar value={paid} max={Number(debt.total_amount)} />
   </Card>
 
-  <!-- Informations détaillées -->
+  <!-- Informations -->
   <Card>
     <h3 class="text-sm font-semibold text-gray-900 mb-4">Informations</h3>
 
     <div class="space-y-3">
-      <!-- Date d'emprunt -->
       <div class="flex items-center justify-between py-2 border-b border-gray-50">
         <span class="text-sm text-gray-500">Date d'emprunt</span>
         <DateDisplay date={debt.loan_date} class="text-sm font-medium text-gray-900" />
       </div>
 
-      <!-- Échéance -->
       {#if debt.due_date}
         <div class="flex items-center justify-between py-2 border-b border-gray-50">
           <span class="text-sm text-gray-500">Échéance</span>
@@ -155,7 +153,6 @@
         </div>
       {/if}
 
-      <!-- Taux d'intérêt -->
       {#if debt.interest_rate}
         <div class="flex items-center justify-between py-2 border-b border-gray-50">
           <span class="text-sm text-gray-500 flex items-center gap-1">
@@ -166,13 +163,11 @@
         </div>
       {/if}
 
-      <!-- Devise -->
       <div class="flex items-center justify-between py-2 border-b border-gray-50">
         <span class="text-sm text-gray-500">Devise</span>
         <span class="text-sm font-medium text-gray-900">{debt.currency}</span>
       </div>
 
-      <!-- Description -->
       {#if debt.description}
         <div class="py-2">
           <span class="text-sm text-gray-500 flex items-center gap-1 mb-1">
@@ -187,7 +182,7 @@
     </div>
   </Card>
 
-  <!-- Infos personne -->
+  <!-- Contact -->
   {#if debt.person?.phone || debt.person?.email}
     <Card>
       <h3 class="text-sm font-semibold text-gray-900 mb-4">Contact</h3>
@@ -218,7 +213,12 @@
     </Card>
   {/if}
 
-  <!-- Bouton ajouter un versement -->
+  <!-- Historique des versements -->
+  <Card>
+    <PaymentHistory debtId={debt.id} currency={debt.currency} type="debt" />
+  </Card>
+
+  <!-- Bouton ajouter versement -->
   {#if debt.status === 'active' && Number(debt.remaining_amount) > 0}
     <Button
       variant="primary"
@@ -232,7 +232,7 @@
   {/if}
 </div>
 
-<!-- Dialog suppression -->
+<!-- Dialogs -->
 <ConfirmDialog
   bind:open={showDeleteDialog}
   title="Supprimer cette dette ?"
@@ -243,7 +243,6 @@
   onconfirm={handleDelete}
 />
 
-<!-- Dialog archivage -->
 <ConfirmDialog
   bind:open={showArchiveDialog}
   title="Archiver cette dette ?"

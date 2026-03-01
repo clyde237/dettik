@@ -1,82 +1,165 @@
 <script>
-	// PaymentForm component - Formulaire ajout versement
-	export let payment = { amount: '', date: '', method: '' };
+  import { goto } from '$app/navigation';
+  import Input from '$lib/components/ui/Input.svelte';
+  import Textarea from '$lib/components/ui/Textarea.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import PaymentMethodSelect from './PaymentMethodSelect.svelte';
+  import ProofUploader from '$lib/components/proof/ProofUploader.svelte';
+  import AmountDisplay from '$lib/components/shared/AmountDisplay.svelte';
+  import { paymentSchema, extractErrors } from '$lib/utils/validators';
+  import { addPayment } from '$lib/stores/payments';
+  import { today } from '$lib/utils/date';
+  import { formatAmount } from '$lib/utils/currency';
+  import { Save, ArrowLeft } from '@lucide/svelte';
 
-	let isSubmitting = false;
+  /**
+   * @type {{
+   *   debtId: string,
+   *   type: 'debt' | 'credit',
+   *   currency?: string,
+   *   remainingAmount: number,
+   *   backUrl: string
+   * }}
+   */
+  let {
+    debtId,
+    type,
+    currency = 'XAF',
+    remainingAmount,
+    backUrl
+  } = $props();
 
-	async function handleSubmit() {
-		isSubmitting = true;
-		try {
-			// Form submission logic here
-		} finally {
-			isSubmitting = false;
-		}
-	}
+  let amount = $state(0);
+  let payment_date = $state(today());
+  let payment_method = $state('');
+  let notes = $state('');
+  let loading = $state(false);
+
+  /** @type {File[]} */
+  let proofFiles = $state([]);
+
+  /** @type {Record<string, string>} */
+  let errors = $state({});
+
+  /**
+   * @param {Event} e
+   */
+  async function handleSubmit(e) {
+    e.preventDefault();
+    errors = {};
+
+    const formData = {
+      amount: Number(amount) || 0,
+      payment_date,
+      payment_method,
+      notes
+    };
+
+    const result = paymentSchema.safeParse(formData);
+    if (!result.success) {
+      errors = extractErrors(result.error);
+      return;
+    }
+
+    // Vérifier que le montant ne dépasse pas le restant
+    if (formData.amount > remainingAmount) {
+      errors.amount = `Le montant ne peut pas dépasser ${formatAmount(remainingAmount, currency)}`;
+      return;
+    }
+
+    loading = true;
+    try {
+      const payment = await addPayment(
+        {
+          debt_id: debtId,
+          amount: formData.amount,
+          payment_date: formData.payment_date,
+          payment_method: formData.payment_method,
+          notes: formData.notes,
+          type
+        },
+        proofFiles
+      );
+
+      if (payment) {
+        goto(backUrl);
+      }
+    } finally {
+      loading = false;
+    }
+  }
+
+  function fillMax() {
+    amount = remainingAmount;
+  }
 </script>
 
-<form on:submit|preventDefault={handleSubmit}>
-	<div class="form-group">
-		<label for="amount">Montant</label>
-		<input type="number" id="amount" bind:value={payment.amount} step="0.01" required />
-	</div>
+<form onsubmit={handleSubmit} class="space-y-6">
+  <!-- Info restant -->
+  <div class="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+    <span class="text-sm text-gray-600">
+      {type === 'debt' ? 'Reste à payer' : 'Reste à percevoir'}
+    </span>
+    <AmountDisplay amount={remainingAmount} {currency} size="md" />
+  </div>
 
-	<div class="form-group">
-		<label for="date">Date</label>
-		<input type="date" id="date" bind:value={payment.date} required />
-	</div>
+  <!-- Montant -->
+  <div>
+    <div class="flex items-end gap-3">
+      <div class="flex-1">
+        <Input
+          label="Montant du {type === 'debt' ? 'versement' : 'remboursement'}"
+          type="number"
+          bind:value={amount}
+          placeholder="0"
+          error={errors.amount}
+          required
+        />
+      </div>
+      <Button variant="outline" size="sm" onclick={fillMax} class="mb-0.5">
+        Max
+      </Button>
+    </div>
+  </div>
 
-	<div class="form-group">
-		<label for="method">Méthode</label>
-		<select id="method" bind:value={payment.method} required>
-			<option value="">-- Sélectionner --</option>
-			<option value="cash">Espèces</option>
-			<option value="card">Carte</option>
-			<option value="transfer">Virement</option>
-			<option value="check">Chèque</option>
-		</select>
-	</div>
+  <!-- Date -->
+  <Input
+    label="Date du {type === 'debt' ? 'versement' : 'remboursement'}"
+    type="date"
+    bind:value={payment_date}
+    error={errors.payment_date}
+    required
+  />
 
-	<button type="submit" disabled={isSubmitting}>
-		{isSubmitting ? 'Enregistrement...' : 'Enregistrer le versement'}
-	</button>
+  <!-- Méthode de paiement -->
+  <PaymentMethodSelect
+    bind:value={payment_method}
+    error={errors.payment_method}
+    required
+  />
+
+  <!-- Notes -->
+  <Textarea
+    label="Notes (optionnel)"
+    bind:value={notes}
+    placeholder="Informations complémentaires..."
+    error={errors.notes}
+    rows={2}
+  />
+
+  <!-- Preuves -->
+  <ProofUploader bind:files={proofFiles} />
+
+  <!-- Actions -->
+  <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+    <Button variant="ghost" onclick={() => history.back()}>
+      <ArrowLeft size={16} />
+      Retour
+    </Button>
+
+    <Button type="submit" {loading}>
+      <Save size={16} />
+      Enregistrer
+    </Button>
+  </div>
 </form>
-
-<style>
-	form {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.form-group {
-		display: flex;
-		flex-direction: column;
-	}
-
-	label {
-		margin-bottom: 0.25rem;
-		font-weight: 500;
-	}
-
-	input,
-	select {
-		padding: 0.5rem;
-		border: 1px solid var(--border-color);
-		border-radius: 0.375rem;
-	}
-
-	button {
-		padding: 0.75rem;
-		background: var(--primary);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-</style>

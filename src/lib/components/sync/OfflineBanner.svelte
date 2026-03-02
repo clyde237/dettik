@@ -1,70 +1,47 @@
 <script>
-	// OfflineBanner component - Bannière mode hors-ligne
-	export let isOffline = false;
+  import { isOnline } from '$lib/sync/online.js';
+  import { syncState, syncStatus } from '$lib/stores/sync.js';
+  import { WifiOff, RefreshCw } from '@lucide/svelte';
+  import { triggerSync } from '$lib/sync/engine.js';
+
+  let syncing = $state(false);
+
+  async function handleRetry() {
+    syncing = true;
+    await triggerSync();
+    syncing = false;
+  }
 </script>
 
-{#if isOffline}
-	<div class="offline-banner">
-		<div class="banner-content">
-			<span class="icon">⚡</span>
-			<div class="message">
-				<p class="title">Mode hors ligne</p>
-				<p class="description">Les modifications seront synchronisées quand vous serez en ligne</p>
-			</div>
-		</div>
-	</div>
+{#if !$isOnline}
+  <div class="bg-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <WifiOff size={16} />
+      <span class="text-sm font-medium">Mode hors ligne</span>
+      {#if $syncState.pendingCount > 0}
+        <span class="bg-white/20 rounded-full px-2 py-0.5 text-xs">
+          {$syncState.pendingCount} en attente
+        </span>
+      {/if}
+    </div>
+    <p class="text-xs opacity-80 hidden sm:block">
+      Les modifications seront synchronisées au retour
+    </p>
+  </div>
+{:else if $syncStatus === 'pending'}
+  <div class="bg-blue-500 text-white px-4 py-2 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <RefreshCw size={16} class={syncing ? 'animate-spin' : ''} />
+      <span class="text-sm font-medium">
+        {$syncState.pendingCount} modification{$syncState.pendingCount > 1 ? 's' : ''} à synchroniser
+      </span>
+    </div>
+    <button
+      onclick={handleRetry}
+      disabled={syncing}
+      class="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full transition disabled:opacity-50"
+    >
+      Synchroniser
+    </button>
+  </div>
 {/if}
-
-<style>
-	.offline-banner {
-		position: sticky;
-		top: 0;
-		background: linear-gradient(135deg, rgba(251, 146, 60, 0.9), rgba(249, 115, 22, 0.9));
-		color: white;
-		z-index: 50;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
-
-	.banner-content {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 1rem 1.5rem;
-		max-width: 100%;
-	}
-
-	.icon {
-		font-size: 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.message {
-		flex: 1;
-	}
-
-	.title {
-		margin: 0;
-		font-weight: 600;
-		font-size: 0.95rem;
-	}
-
-	.description {
-		margin: 0.25rem 0 0;
-		font-size: 0.875rem;
-		opacity: 0.9;
-	}
-
-	@media (max-width: 768px) {
-		.banner-content {
-			padding: 0.75rem 1rem;
-		}
-
-		.title {
-			font-size: 0.875rem;
-		}
-
-		.description {
-			font-size: 0.8rem;
-		}
-	}
-</style>

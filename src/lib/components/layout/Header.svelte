@@ -1,14 +1,13 @@
 <script>
   import { ui, toggleSidebar } from '$lib/stores/ui';
   import { Menu } from '@lucide/svelte';
+  import SyncIndicator from '$lib/components/sync/SyncIndicator.svelte';
 
-  /** @type {{ actions?: import('svelte').Snippet }} */
   let { actions } = $props();
 </script>
 
 <header class="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200">
   <div class="flex items-center justify-between h-16 px-4 lg:px-6">
-    <!-- Gauche : Menu burger (mobile) + Titre -->
     <div class="flex items-center gap-3">
       <button
         class="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
@@ -26,11 +25,17 @@
       </div>
     </div>
 
-    <!-- Droite : Actions spécifiques à la page -->
-    {#if actions}
-      <div class="flex items-center gap-2">
-        {@render actions()}
+    <div class="flex items-center gap-3">
+      <!-- Indicateur de sync (desktop uniquement) -->
+      <div class="hidden sm:flex">
+        <SyncIndicator />
       </div>
-    {/if}
+
+      {#if actions}
+        <div class="flex items-center gap-2">
+          {@render actions()}
+        </div>
+      {/if}
+    </div>
   </div>
 </header>

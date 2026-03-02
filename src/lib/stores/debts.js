@@ -9,6 +9,11 @@ import {
 } from '$lib/services/debts.service';
 import { toastSuccess, toastError } from '$lib/stores/notifications';
 
+import { localGetDebts, localSaveDebts } from '$lib/db/debts.js';
+import { isOnline } from '$lib/sync/online.js';
+import { get } from 'svelte/store';
+import { enqueue } from '$lib/db/sync-queue.js';
+
 /**
  * @typedef {import('$lib/services/debts.service').Debt} Debt
  */
@@ -90,20 +95,29 @@ export async function loadDebts() {
   debts.update((state) => ({ ...state, loading: true }));
 
   try {
-    const data = await getDebts();
-    debts.update((state) => ({
-      ...state,
-      list: data,
-      loading: false,
-      loaded: true
-    }));
+    if (get(isOnline)) {
+      // En ligne : charger depuis Supabase et mettre en cache
+      const data = await getDebts();
+      await localSaveDebts(data); // Cache local
+      debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
+    } else {
+      // Hors ligne : charger depuis IndexedDB
+      const { data: { user } } = await supabase.auth.getUser();
+      const data = user ? await localGetDebts(user.id) : [];
+      debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
+    }
   } catch (err) {
-    debts.update((state) => ({ ...state, loading: false }));
-    toastError('Erreur lors du chargement des dettes');
-    console.error(err);
+    // Fallback sur cache local en cas d'erreur réseau
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const cached = user ? await localGetDebts(user.id) : [];
+      debts.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
+    } catch {
+      debts.update((state) => ({ ...state, loading: false }));
+      toastError('Erreur chargement — mode hors ligne');
+    }
   }
 }
-
 /**
  * Ajouter une dette
  * @param {Parameters<typeof createDebt>[0]} data
@@ -111,17 +125,35 @@ export async function loadDebts() {
  */
 export async function addDebt(data) {
   try {
-    const newDebt = await createDebt(data);
+    let newDebt;
 
-    debts.update((state) => ({
-      ...state,
-      list: [newDebt, ...state.list]
-    }));
+    if (get(isOnline)) {
+      newDebt = await createDebt(data);
+      await localSaveDebt(newDebt); // Cache
+    } else {
+      // Hors ligne : créer localement et mettre en file
+      const { data: { user } } = await supabase.auth.getUser();
+      newDebt = {
+        ...data,
+        id: crypto.randomUUID(),
+        user_id: user?.id || '',
+        remaining_amount: data.total_amount,
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        archived_at: null,
+        _pendingSync: true
+      };
+      await localSaveDebt(newDebt);
+      await enqueue({ table_name: 'debts', operation: 'create', record_id: newDebt.id, data: newDebt });
+      syncStore.refreshPendingCount();
+    }
 
-    toastSuccess('Dette ajoutée');
+    debts.update((state) => ({ ...state, list: [newDebt, ...state.list] }));
+    toastSuccess(get(isOnline) ? 'Dette ajoutée' : 'Dette ajoutée (hors ligne)');
     return newDebt;
   } catch (err) {
-    toastError('Erreur lors de l\'ajout de la dette');
+    toastError("Erreur lors de l'ajout de la dette");
     console.error(err);
     return null;
   }

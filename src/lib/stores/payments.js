@@ -1,9 +1,11 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { getPayments, createPayment, deletePayment } from '$lib/services/payments.service';
 import { uploadProof, deleteProof } from '$lib/services/proofs.service';
-import { toastSuccess, toastError } from '$lib/stores/notifications';
+import { toastSuccess, toastError, toastWarning } from '$lib/stores/notifications';
 import { updateDebtRemaining } from '$lib/stores/debts';
 import { updateCreditRemaining } from '$lib/stores/credits';
+import { localGetPayments, localSavePayments } from '$lib/db/payments.js';
+import { isOnline } from '$lib/sync/online.js';
 
 /**
  * @typedef {import('$lib/services/payments.service').Payment} Payment
@@ -24,22 +26,35 @@ export const payments = writable({
 });
 
 /**
- * Charger les versements d'une dette/créance
+ * Charger les versements d'une dette/créance — offline niveau 2
  * @param {string} debtId
  */
 export async function loadPayments(debtId) {
   payments.update((state) => ({ ...state, loading: true, currentDebtId: debtId }));
 
   try {
-    const data = await getPayments(debtId);
-    payments.update((state) => ({
-      ...state,
-      list: data,
-      loading: false
-    }));
+    if (get(isOnline)) {
+      // En ligne : Supabase + mise en cache local
+      const data = await getPayments(debtId);
+      await localSavePayments(data);
+      payments.update((state) => ({ ...state, list: data, loading: false }));
+    } else {
+      // Hors ligne : IndexedDB
+      const cached = await localGetPayments(debtId);
+      payments.update((state) => ({ ...state, list: cached, loading: false }));
+      if (cached.length > 0) {
+        toastWarning('Historique en mode hors ligne');
+      }
+    }
   } catch (err) {
-    payments.update((state) => ({ ...state, loading: false }));
-    toastError('Erreur lors du chargement des versements');
+    // Fallback cache en cas d'erreur réseau
+    try {
+      const cached = await localGetPayments(debtId);
+      payments.update((state) => ({ ...state, list: cached, loading: false }));
+    } catch {
+      payments.update((state) => ({ ...state, loading: false }));
+      toastError('Erreur lors du chargement des versements');
+    }
     console.error(err);
   }
 }
@@ -59,7 +74,6 @@ export async function loadPayments(debtId) {
  */
 export async function addPayment(data, files = []) {
   try {
-    // 1. Créer le versement
     const { payment, newRemaining } = await createPayment({
       debt_id: data.debt_id,
       amount: data.amount,
@@ -68,7 +82,7 @@ export async function addPayment(data, files = []) {
       notes: data.notes
     });
 
-    // 2. Uploader les preuves
+    // Uploader les preuves
     if (files.length > 0) {
       const proofs = [];
       for (const file of files) {
@@ -83,20 +97,17 @@ export async function addPayment(data, files = []) {
       payment.proofs = proofs;
     }
 
-    // 3. Mettre à jour la liste locale des versements
-    payments.update((state) => ({
-      ...state,
-      list: [payment, ...state.list]
-    }));
+    // Mettre en cache local
+    await localSavePayments([payment]);
 
-    // 4. Mettre à jour le remaining dans le store dette/créance
+    payments.update((state) => ({ ...state, list: [payment, ...state.list] }));
+
     if (data.type === 'debt') {
       updateDebtRemaining(data.debt_id, newRemaining);
     } else {
       updateCreditRemaining(data.debt_id, newRemaining);
     }
 
-    // 5. Message selon archivage ou non
     if (newRemaining <= 0) {
       toastSuccess(data.type === 'debt'
         ? 'Dette entièrement remboursée ! Archivée automatiquement.'
@@ -108,7 +119,7 @@ export async function addPayment(data, files = []) {
 
     return payment;
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Erreur lors de l\'ajout du versement';
+    const message = err instanceof Error ? err.message : "Erreur lors de l'ajout du versement";
     toastError(message);
     console.error(err);
     return null;
@@ -147,7 +158,7 @@ export async function removePayment(paymentId, debtId, type) {
 }
 
 /**
- * Supprimer une preuve d'un versement
+ * Supprimer une preuve
  * @param {import('$lib/services/proofs.service').Proof} proof
  * @returns {Promise<boolean>}
  */
@@ -159,10 +170,7 @@ export async function removeProof(proof) {
       ...state,
       list: state.list.map((p) => {
         if (p.id === proof.payment_id && p.proofs) {
-          return {
-            ...p,
-            proofs: p.proofs.filter((pr) => pr.id !== proof.id)
-          };
+          return { ...p, proofs: p.proofs.filter((pr) => pr.id !== proof.id) };
         }
         return p;
       })

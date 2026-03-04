@@ -4,7 +4,6 @@
   import { supabase } from '$lib/supabase/client';
   import ToastContainer from '$lib/components/ui/ToastContainer.svelte';
   import InstallPrompt from '$lib/components/shared/InstallPrompt.svelte';
-  import OfflineBanner from '$lib/components/sync/OfflineBanner.svelte';
   import UpdateBanner from '$lib/components/sync/UpdateBanner.svelte';
   import './layout.css';
 
@@ -18,7 +17,7 @@
   });
 </script>
 
-<OfflineBanner />
+<UpdateBanner />
 {@render children()}
 <ToastContainer />
 <InstallPrompt />

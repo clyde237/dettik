@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import {
   getCredits,
   createCredit,
@@ -7,7 +7,10 @@ import {
   archiveCredit,
   restoreCredit
 } from '$lib/services/credits.service';
-import { toastSuccess, toastError } from '$lib/stores/notifications';
+import { toastSuccess, toastError, toastWarning } from '$lib/stores/notifications';
+import { localGetCredits, localSaveDebt, localSaveDebts } from '$lib/db/debts.js';
+import { isOnline } from '$lib/sync/online.js';
+import { supabase } from '$lib/supabase/client';
 
 /**
  * @typedef {import('$lib/services/credits.service').Credit} Credit
@@ -49,7 +52,6 @@ export const filteredCredits = derived(credits, ($credits) => {
 
   result.sort((a, b) => {
     let comparison = 0;
-
     switch ($credits.sortBy) {
       case 'date':
         comparison = new Date(a.loan_date).getTime() - new Date(b.loan_date).getTime();
@@ -61,7 +63,6 @@ export const filteredCredits = derived(credits, ($credits) => {
         comparison = (a.person?.name || '').localeCompare(b.person?.name || '');
         break;
     }
-
     return $credits.sortOrder === 'desc' ? -comparison : comparison;
   });
 
@@ -83,22 +84,39 @@ export const creditsStats = derived(credits, ($credits) => {
 
 /**
  * Charger toutes les créances actives
+ * Niveau 2 offline : Supabase online, IndexedDB offline
  */
 export async function loadCredits() {
   credits.update((state) => ({ ...state, loading: true }));
 
   try {
-    const data = await getCredits();
-    credits.update((state) => ({
-      ...state,
-      list: data,
-      loading: false,
-      loaded: true
-    }));
+    if (get(isOnline)) {
+      // En ligne : charger depuis Supabase et mettre en cache local
+      const data = await getCredits();
+      await localSaveDebts(data); // même table IndexedDB que debts
+      credits.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
+    } else {
+      // Hors ligne : charger depuis IndexedDB
+      const { data: { user } } = await supabase.auth.getUser();
+      const data = user ? await localGetCredits(user.id) : [];
+      credits.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
+      if (data.length > 0) {
+        toastWarning('Mode hors ligne — données locales affichées');
+      }
+    }
   } catch (err) {
-    credits.update((state) => ({ ...state, loading: false }));
-    toastError('Erreur lors du chargement des créances');
-    console.error(err);
+    // Fallback sur cache local en cas d'erreur réseau
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const cached = user ? await localGetCredits(user.id) : [];
+      credits.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
+      if (cached.length > 0) {
+        toastWarning('Connexion impossible — données locales affichées');
+      }
+    } catch {
+      credits.update((state) => ({ ...state, loading: false }));
+      toastError('Erreur chargement — mode hors ligne');
+    }
   }
 }
 
@@ -110,6 +128,7 @@ export async function loadCredits() {
 export async function addCredit(data) {
   try {
     const newCredit = await createCredit(data);
+    await localSaveDebt(newCredit); // cache local
 
     credits.update((state) => ({
       ...state,
@@ -119,7 +138,7 @@ export async function addCredit(data) {
     toastSuccess('Créance ajoutée');
     return newCredit;
   } catch (err) {
-    toastError('Erreur lors de l\'ajout de la créance');
+    toastError("Erreur lors de l'ajout de la créance");
     console.error(err);
     return null;
   }
@@ -134,6 +153,7 @@ export async function addCredit(data) {
 export async function editCredit(id, data) {
   try {
     const updated = await updateCredit(id, data);
+    await localSaveDebt(updated); // cache local
 
     credits.update((state) => ({
       ...state,
@@ -189,7 +209,7 @@ export async function archiveCreditStore(id) {
     toastSuccess('Créance archivée');
     return true;
   } catch (err) {
-    toastError('Erreur lors de l\'archivage');
+    toastError("Erreur lors de l'archivage");
     console.error(err);
     return false;
   }
@@ -246,10 +266,12 @@ export function setCreditSort(sortBy) {
 export function updateCreditRemaining(id, newRemaining) {
   credits.update((state) => ({
     ...state,
-    list: state.list.map((c) =>
-      c.id === id
-        ? { ...c, remaining_amount: newRemaining, status: newRemaining <= 0 ? 'archived' : 'active' }
-        : c
-    ).filter((c) => c.status === 'active')
+    list: state.list
+      .map((c) =>
+        c.id === id
+          ? { ...c, remaining_amount: newRemaining, status: newRemaining <= 0 ? 'archived' : 'active' }
+          : c
+      )
+      .filter((c) => c.status === 'active')
   }));
 }

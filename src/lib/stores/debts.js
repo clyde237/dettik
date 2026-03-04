@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import {
   getDebts,
   createDebt,
@@ -7,12 +7,12 @@ import {
   archiveDebt,
   restoreDebt
 } from '$lib/services/debts.service';
-import { toastSuccess, toastError } from '$lib/stores/notifications';
-
-import { localGetDebts, localSaveDebts } from '$lib/db/debts.js';
+import { toastSuccess, toastError, toastWarning } from '$lib/stores/notifications';
+import { localGetDebts, localSaveDebt, localSaveDebts } from '$lib/db/debts.js';
 import { isOnline } from '$lib/sync/online.js';
-import { get } from 'svelte/store';
 import { enqueue } from '$lib/db/sync-queue.js';
+import { syncStore } from '$lib/stores/sync.js';
+import { supabase } from '$lib/supabase/client';
 
 /**
  * @typedef {import('$lib/services/debts.service').Debt} Debt
@@ -44,7 +44,6 @@ export const debts = writable({
 export const filteredDebts = derived(debts, ($debts) => {
   let result = [...$debts.list];
 
-  // Filtre par recherche
   const query = $debts.searchQuery.toLowerCase().trim();
   if (query) {
     result = result.filter((debt) =>
@@ -53,10 +52,8 @@ export const filteredDebts = derived(debts, ($debts) => {
     );
   }
 
-  // Tri
   result.sort((a, b) => {
     let comparison = 0;
-
     switch ($debts.sortBy) {
       case 'date':
         comparison = new Date(a.loan_date).getTime() - new Date(b.loan_date).getTime();
@@ -68,7 +65,6 @@ export const filteredDebts = derived(debts, ($debts) => {
         comparison = (a.person?.name || '').localeCompare(b.person?.name || '');
         break;
     }
-
     return $debts.sortOrder === 'desc' ? -comparison : comparison;
   });
 
@@ -90,21 +86,25 @@ export const debtsStats = derived(debts, ($debts) => {
 
 /**
  * Charger toutes les dettes actives
+ * Niveau 2 offline : Supabase online, IndexedDB offline
  */
 export async function loadDebts() {
   debts.update((state) => ({ ...state, loading: true }));
 
   try {
     if (get(isOnline)) {
-      // En ligne : charger depuis Supabase et mettre en cache
+      // En ligne : charger depuis Supabase et mettre en cache local
       const data = await getDebts();
-      await localSaveDebts(data); // Cache local
+      await localSaveDebts(data);
       debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
     } else {
       // Hors ligne : charger depuis IndexedDB
       const { data: { user } } = await supabase.auth.getUser();
       const data = user ? await localGetDebts(user.id) : [];
       debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
+      if (data.length > 0) {
+        toastWarning('Mode hors ligne — données locales affichées');
+      }
     }
   } catch (err) {
     // Fallback sur cache local en cas d'erreur réseau
@@ -112,12 +112,16 @@ export async function loadDebts() {
       const { data: { user } } = await supabase.auth.getUser();
       const cached = user ? await localGetDebts(user.id) : [];
       debts.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
+      if (cached.length > 0) {
+        toastWarning('Connexion impossible — données locales affichées');
+      }
     } catch {
       debts.update((state) => ({ ...state, loading: false }));
       toastError('Erreur chargement — mode hors ligne');
     }
   }
 }
+
 /**
  * Ajouter une dette
  * @param {Parameters<typeof createDebt>[0]} data
@@ -128,29 +132,36 @@ export async function addDebt(data) {
     let newDebt;
 
     if (get(isOnline)) {
+      // En ligne : créer sur Supabase + mettre en cache local
       newDebt = await createDebt(data);
-      //await localSaveDebt(newDebt); // Cache
+      await localSaveDebt(newDebt);
+      toastSuccess('Dette ajoutée');
     } else {
-      // Hors ligne : créer localement et mettre en file
+      // Hors ligne : créer localement + mettre en file de sync
       const { data: { user } } = await supabase.auth.getUser();
       newDebt = {
         ...data,
         id: crypto.randomUUID(),
         user_id: user?.id || '',
         remaining_amount: data.total_amount,
-        status: 'active',
+        status: /** @type {const} */ ('active'),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         archived_at: null,
         _pendingSync: true
       };
-      //await localSaveDebt(newDebt);
-      await enqueue({ table_name: 'debts', operation: 'create', record_id: newDebt.id, data: newDebt });
-      syncStore.refreshPendingCount();
+      await localSaveDebt(newDebt);
+      await enqueue({
+        table_name: 'debts',
+        operation: 'create',
+        record_id: newDebt.id,
+        data: newDebt
+      });
+      await syncStore.refreshPendingCount();
+      toastWarning('Dette ajoutée localement — sera synchronisée à la reconnexion');
     }
 
     debts.update((state) => ({ ...state, list: [newDebt, ...state.list] }));
-    toastSuccess(get(isOnline) ? 'Dette ajoutée' : 'Dette ajoutée (hors ligne)');
     return newDebt;
   } catch (err) {
     toastError("Erreur lors de l'ajout de la dette");
@@ -168,6 +179,7 @@ export async function addDebt(data) {
 export async function editDebt(id, data) {
   try {
     const updated = await updateDebt(id, data);
+    await localSaveDebt(updated);
 
     debts.update((state) => ({
       ...state,
@@ -223,7 +235,7 @@ export async function archiveDebtStore(id) {
     toastSuccess('Dette archivée');
     return true;
   } catch (err) {
-    toastError('Erreur lors de l\'archivage');
+    toastError("Erreur lors de l'archivage");
     console.error(err);
     return false;
   }
@@ -280,10 +292,12 @@ export function setDebtSort(sortBy) {
 export function updateDebtRemaining(id, newRemaining) {
   debts.update((state) => ({
     ...state,
-    list: state.list.map((d) =>
-      d.id === id
-        ? { ...d, remaining_amount: newRemaining, status: newRemaining <= 0 ? 'archived' : 'active' }
-        : d
-    ).filter((d) => d.status === 'active')
+    list: state.list
+      .map((d) =>
+        d.id === id
+          ? { ...d, remaining_amount: newRemaining, status: newRemaining <= 0 ? 'archived' : 'active' }
+          : d
+      )
+      .filter((d) => d.status === 'active')
   }));
 }

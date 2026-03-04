@@ -129,7 +129,7 @@ export async function addDebt(data) {
 
     if (get(isOnline)) {
       newDebt = await createDebt(data);
-      await localSaveDebt(newDebt); // Cache
+      //await localSaveDebt(newDebt); // Cache
     } else {
       // Hors ligne : créer localement et mettre en file
       const { data: { user } } = await supabase.auth.getUser();
@@ -144,7 +144,7 @@ export async function addDebt(data) {
         archived_at: null,
         _pendingSync: true
       };
-      await localSaveDebt(newDebt);
+      //await localSaveDebt(newDebt);
       await enqueue({ table_name: 'debts', operation: 'create', record_id: newDebt.id, data: newDebt });
       syncStore.refreshPendingCount();
     }

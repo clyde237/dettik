@@ -1,153 +1,167 @@
-import { supabase } from '$lib/supabase/client';
+/**
+ * Authentification via Clerk.
+ *
+ * Les flux passent par les ressources signIn/signUp de Clerk JS plutôt que par
+ * les composants préfabriqués, pour conserver les formulaires existants.
+ *
+ * L'instance Clerk n'est accessible que depuis le contexte du composant
+ * (useClerkContext()), elle est donc passée en premier argument — un module
+ * ordinaire ne peut pas lire un contexte Svelte.
+ */
 
-// ============================================
-// AUTHENTIFICATION CLASSIQUE
-// ============================================
+/** @typedef {import('@clerk/shared/types').LoadedClerk} Clerk */
 
 /**
- * Inscription avec email et mot de passe
- * @param {{ email: string, password: string, full_name: string }} params
+ * @param {any} clerk
+ * @returns {Clerk}
  */
-export async function register({ email, password, full_name }) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name }
-    }
-  });
-
-  if (error) throw error;
-  return data;
+function requireClerk(clerk) {
+	if (!clerk) throw new Error("Le service d'authentification n'est pas encore chargé");
+	return clerk;
 }
 
 /**
- * Connexion avec email et mot de passe
+ * Traduit une erreur Clerk en message affichable.
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function authErrorMessage(err) {
+	const clerkErrors = /** @type {any} */ (err)?.errors;
+	if (Array.isArray(clerkErrors) && clerkErrors.length > 0) {
+		return clerkErrors[0].longMessage || clerkErrors[0].message || 'Erreur inconnue';
+	}
+	return err instanceof Error ? err.message : 'Erreur inconnue';
+}
+
+// ============================================
+// INSCRIPTION
+// ============================================
+
+/**
+ * Démarre une inscription email + mot de passe.
+ *
+ * Selon la configuration de l'instance Clerk, un code de vérification peut être
+ * exigé : dans ce cas needsVerification vaut true et il faut enchaîner sur
+ * verifyEmailCode().
+ *
+ * @param {any} clerk
  * @param {{ email: string, password: string }} params
- * @returns {Promise<{ session: any, user: any, mfaRequired: boolean, factorId?: string }>}
+ * @returns {Promise<{ complete: boolean, needsVerification: boolean }>}
  */
-export async function login({ email, password }) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+export async function register(clerk, { email, password }) {
+	const instance = requireClerk(clerk);
 
-  if (error) throw error;
+	const signUp = await instance.client.signUp.create({
+		emailAddress: email,
+		password
+	});
 
-  // Vérifier si l'utilisateur a activé la 2FA
-  const { data: factorsData } = await supabase.auth.mfa.listFactors();
-  const totpFactors = factorsData?.totp ?? [];
+	if (signUp.status === 'complete') {
+		await instance.setActive({ session: signUp.createdSessionId });
+		return { complete: true, needsVerification: false };
+	}
 
-  if (totpFactors.length > 0) {
-    // L'utilisateur a la 2FA activée → il faut vérifier
-    return {
-      session: data.session,
-      user: data.user,
-      mfaRequired: true,
-      factorId: totpFactors[0].id
-    };
-  }
-
-  return {
-    session: data.session,
-    user: data.user,
-    mfaRequired: false
-  };
+	await instance.client.signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+	return { complete: false, needsVerification: true };
 }
 
 /**
- * Déconnexion
+ * Valide le code reçu par email et active la session.
+ * @param {any} clerk
+ * @param {string} code
+ * @returns {Promise<{ complete: boolean }>}
  */
-export async function logout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+export async function verifyEmailCode(clerk, code) {
+	const instance = requireClerk(clerk);
+
+	const signUp = await instance.client.signUp.attemptEmailAddressVerification({ code });
+
+	if (signUp.status !== 'complete') return { complete: false };
+
+	await instance.setActive({ session: signUp.createdSessionId });
+	return { complete: true };
+}
+
+// ============================================
+// CONNEXION
+// ============================================
+
+/**
+ * Connexion email + mot de passe.
+ * @param {any} clerk
+ * @param {{ email: string, password: string }} params
+ * @returns {Promise<{ complete: boolean, status: string | null }>}
+ */
+export async function login(clerk, { email, password }) {
+	const instance = requireClerk(clerk);
+
+	const signIn = await instance.client.signIn.create({
+		identifier: email,
+		password
+	});
+
+	if (signIn.status === 'complete') {
+		await instance.setActive({ session: signIn.createdSessionId });
+		return { complete: true, status: signIn.status };
+	}
+
+	return { complete: false, status: signIn.status };
 }
 
 /**
- * Envoyer un email de réinitialisation
+ * Déconnexion.
+ * @param {any} clerk
+ */
+export async function logout(clerk) {
+	await requireClerk(clerk).signOut();
+}
+
+// ============================================
+// MOT DE PASSE OUBLIÉ
+// ============================================
+
+/**
+ * Envoie un code de réinitialisation par email.
+ *
+ * La tentative reste vivante sur clerk.client.signIn, ce qui permet de terminer
+ * la réinitialisation depuis la page /reset-password.
+ *
+ * @param {any} clerk
  * @param {string} email
  */
-export async function forgotPassword(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`
-  });
-  if (error) throw error;
+export async function forgotPassword(clerk, email) {
+	await requireClerk(clerk).client.signIn.create({
+		strategy: 'reset_password_email_code',
+		identifier: email
+	});
 }
 
 /**
- * Réinitialiser le mot de passe
- * @param {string} password
+ * Valide le code puis applique le nouveau mot de passe.
+ * @param {any} clerk
+ * @param {{ code: string, password: string }} params
+ * @returns {Promise<{ complete: boolean, status: string | null }>}
  */
-export async function resetPassword(password) {
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) throw error;
-}
+export async function resetPassword(clerk, { code, password }) {
+	const instance = requireClerk(clerk);
 
-// ============================================
-// OAUTH (Google, Facebook)
-// ============================================
+	const attempt = await instance.client.signIn.attemptFirstFactor({
+		strategy: 'reset_password_email_code',
+		code
+	});
 
-/**
- * Connexion avec un provider OAuth
- * @param {'google' | 'facebook'} provider
- */
-export async function loginWithOAuth(provider) {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${window.location.origin}/`
-    }
-  });
-  if (error) throw error;
-}
+	if (attempt.status !== 'needs_new_password' && attempt.status !== 'complete') {
+		return { complete: false, status: attempt.status };
+	}
 
-// ============================================
-// 2FA (TOTP)
-// ============================================
+	const signIn = await instance.client.signIn.resetPassword({ password });
 
-/**
- * Créer un challenge MFA et le vérifier avec le code TOTP
- * @param {{ factorId: string, code: string }} params
- */
-export async function verifyMFA({ factorId, code }) {
-  // Créer le challenge
-  const { data: challenge, error: challengeError } =
-    await supabase.auth.mfa.challenge({ factorId });
+	if (signIn.status === 'complete') {
+		await instance.setActive({ session: signIn.createdSessionId });
+		return { complete: true, status: signIn.status };
+	}
 
-  if (challengeError) throw challengeError;
-
-  // Vérifier le code
-  const { data, error } = await supabase.auth.mfa.verify({
-    factorId,
-    challengeId: challenge.id,
-    code
-  });
-
-  if (error) throw error;
-  return data;
-}
-
-/**
- * Inscrire l'utilisateur à la 2FA (génère le QR code)
- * → Sera utilisé dans les paramètres (Module 10)
- */
-export async function enrollMFA() {
-  const { data, error } = await supabase.auth.mfa.enroll({
-    factorType: 'totp',
-    friendlyName: 'Dettik Authenticator'
-  });
-
-  if (error) throw error;
-  return data; // contient totp.qr_code et totp.uri
-}
-
-/**
- * Désactiver la 2FA
- * @param {string} factorId
- */
-export async function unenrollMFA(factorId) {
-  const { error } = await supabase.auth.mfa.unenroll({ factorId });
-  if (error) throw error;
+	return { complete: false, status: signIn.status };
 }
 
 // ============================================
@@ -155,37 +169,39 @@ export async function unenrollMFA(factorId) {
 // ============================================
 
 /**
- * Récupérer le profil de l'utilisateur connecté
+ * @typedef {Object} Profile
+ * @property {string} id ID utilisateur Clerk
+ * @property {string|null} email
+ * @property {string|null} full_name
+ * @property {string} preferred_currency
+ * @property {string} preferred_language
+ * @property {string} preferred_theme
+ * @property {string} created_at
+ * @property {string} updated_at
+ */
+
+/**
+ * Récupère le profil applicatif (préférences + email).
+ * @returns {Promise<Profile | null>}
  */
 export async function getProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-
-  if (error) throw error;
-  return data;
+	const response = await fetch('/api/profile');
+	if (!response.ok) throw new Error('Impossible de charger le profil');
+	return response.json();
 }
 
 /**
- * Mettre à jour le profil
- * @param {Record<string, any>} updates
+ * Met à jour le profil applicatif.
+ * @param {Partial<Profile>} updates
+ * @returns {Promise<Profile>}
  */
 export async function updateProfile(updates) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Non connecté');
+	const response = await fetch('/api/profile', {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(updates)
+	});
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+	if (!response.ok) throw new Error('Impossible de mettre à jour le profil');
+	return response.json();
 }

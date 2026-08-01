@@ -1,4 +1,4 @@
-import { supabase } from '$lib/supabase/client';
+import { apiGet, apiPatch, apiDelete } from './api.js';
 
 /**
  * @typedef {import('$lib/services/debts.service').Debt} ArchivedItem
@@ -8,15 +8,8 @@ import { supabase } from '$lib/supabase/client';
  * Récupérer toutes les entrées archivées (dettes + créances)
  * @returns {Promise<ArchivedItem[]>}
  */
-export async function getArchives() {
-  const { data, error } = await supabase
-    .from('debts')
-    .select('*, person:persons(*)')
-    .eq('status', 'archived')
-    .order('archived_at', { ascending: false });
-
-  if (error) throw error;
-  return data || [];
+export function getArchives() {
+	return apiGet('/api/debts', { status: 'archived' });
 }
 
 /**
@@ -24,15 +17,8 @@ export async function getArchives() {
  * @param {string} id
  * @returns {Promise<ArchivedItem>}
  */
-export async function getArchivedItem(id) {
-  const { data, error } = await supabase
-    .from('debts')
-    .select('*, person:persons(*)')
-    .eq('id', id)
-    .single();
-
-  if (error) throw error;
-  return data;
+export function getArchivedItem(id) {
+	return apiGet(`/api/debts/${id}`);
 }
 
 /**
@@ -40,19 +26,8 @@ export async function getArchivedItem(id) {
  * @param {string} id
  * @returns {Promise<ArchivedItem>}
  */
-export async function restoreArchive(id) {
-  const { data, error } = await supabase
-    .from('debts')
-    .update({
-      status: 'active',
-      archived_at: null
-    })
-    .eq('id', id)
-    .select('*, person:persons(*)')
-    .single();
-
-  if (error) throw error;
-  return data;
+export function restoreArchive(id) {
+	return apiPatch(`/api/debts/${id}`, { status: 'active' });
 }
 
 /**
@@ -61,10 +36,5 @@ export async function restoreArchive(id) {
  * @returns {Promise<void>}
  */
 export async function deleteArchive(id) {
-  const { error } = await supabase
-    .from('debts')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
+	await apiDelete(`/api/debts/${id}`);
 }

@@ -1,17 +1,9 @@
-import { createSupabaseServerClient } from '$lib/supabase/server';
+import { withClerkHandler } from 'svelte-clerk/server';
 
-/** @type {import('@sveltejs/kit').Handle} */
-export async function handle({ event, resolve }) {
-  event.locals.supabase = createSupabaseServerClient(event.cookies);
-
-  event.locals.getSession = async () => {
-    const { data: { session } } = await event.locals.supabase.auth.getSession();
-    return session;
-  };
-
-  return resolve(event, {
-    filterSerializedResponseHeaders(name) {
-      return name === 'content-range' || name === 'x-supabase-api-version';
-    }
-  });
-}
+/**
+ * Authentifie chaque requête et expose event.locals.auth().
+ * Remplace le handler Supabase qui instanciait un client par requête.
+ *
+ * @type {import('@sveltejs/kit').Handle}
+ */
+export const handle = withClerkHandler();

@@ -10,8 +10,11 @@
     LogOut,
     X
   } from '@lucide/svelte';
+  import { useClerkContext } from 'svelte-clerk';
   import { logout } from '$lib/services/auth.service';
-  import { goto, invalidate } from '$app/navigation';
+  import { goto } from '$app/navigation';
+
+  const ctx = useClerkContext();
 
   const navItems = [
     { href: '/', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -31,9 +34,8 @@
   }
 
   async function handleLogout() {
-    await logout();
-    await invalidate('supabase:auth');
-    goto('/login');
+    await logout(ctx.clerk);
+    await goto('/login', { invalidateAll: true });
   }
 
   /**

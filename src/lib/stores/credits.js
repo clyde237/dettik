@@ -10,7 +10,7 @@ import {
 import { toastSuccess, toastError, toastWarning } from '$lib/stores/notifications';
 import { localGetCredits, localSaveDebt, localSaveDebts } from '$lib/db/debts.js';
 import { isOnline } from '$lib/sync/online.js';
-import { supabase } from '$lib/supabase/client';
+import { getCurrentUserId } from '$lib/stores/session.js';
 
 /**
  * @typedef {import('$lib/services/credits.service').Credit} Credit
@@ -97,8 +97,8 @@ export async function loadCredits() {
       credits.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
     } else {
       // Hors ligne : charger depuis IndexedDB
-      const { data: { user } } = await supabase.auth.getUser();
-      const data = user ? await localGetCredits(user.id) : [];
+      const userId = getCurrentUserId();
+      const data = userId ? await localGetCredits(userId) : [];
       credits.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
       if (data.length > 0) {
         toastWarning('Mode hors ligne — données locales affichées');
@@ -107,8 +107,8 @@ export async function loadCredits() {
   } catch (err) {
     // Fallback sur cache local en cas d'erreur réseau
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const cached = user ? await localGetCredits(user.id) : [];
+      const userId = getCurrentUserId();
+      const cached = userId ? await localGetCredits(userId) : [];
       credits.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
       if (cached.length > 0) {
         toastWarning('Connexion impossible — données locales affichées');

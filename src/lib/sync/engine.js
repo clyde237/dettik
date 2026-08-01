@@ -3,7 +3,8 @@ import { isOnline } from './online.js';
 import { flushQueue } from './queue.js';
 import { getPendingCount } from '$lib/db/sync-queue.js';
 import { syncStore } from '$lib/stores/sync.js';
-import { supabase } from '$lib/supabase/client';
+import { getCurrentUserId } from '$lib/stores/session.js';
+import { apiGet } from '$lib/services/api.js';
 import { localSaveDebts } from '$lib/db/debts.js';
 import { localSavePersons } from '$lib/db/persons.js';
 import { localSavePayments } from '$lib/db/payments.js';
@@ -11,38 +12,32 @@ import { localSavePayments } from '$lib/db/payments.js';
 let syncInProgress = false;
 
 /**
- * Synchroniser toutes les données depuis Supabase vers IndexedDB
+ * Synchroniser toutes les données depuis Turso vers IndexedDB
+ *
+ * Le filtrage par utilisateur est appliqué côté serveur par les endpoints, il
+ * n'est plus passé dans la requête.
  */
 export async function syncFromRemote() {
-  try {
-    syncStore.setSyncing(true);
+	try {
+		syncStore.setSyncing(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+		if (!getCurrentUserId()) return;
 
-    // Sync debts + credits
-    const { data: debts } = await supabase
-      .from('debts')
-      .select('*, person:persons(*)')
-      .eq('user_id', user.id);
+		// Sync debts + credits (toutes catégories, tous statuts)
+		const debts = await apiGet('/api/debts');
+		if (debts) await localSaveDebts(debts);
 
-    if (debts) await localSaveDebts(debts);
+		// Sync persons
+		const persons = await apiGet('/api/persons');
+		if (persons) await localSavePersons(persons);
 
-    // Sync persons
-    const { data: persons } = await supabase
-      .from('persons')
-      .select('*')
-      .eq('user_id', user.id);
-
-    if (persons) await localSavePersons(persons);
-
-    syncStore.setLastSync(new Date());
-    syncStore.setSyncing(false);
-  } catch (err) {
-    console.error('[Sync] Erreur syncFromRemote:', err);
-    syncStore.setError('Erreur de synchronisation');
-    syncStore.setSyncing(false);
-  }
+		syncStore.setLastSync(new Date());
+		syncStore.setSyncing(false);
+	} catch (err) {
+		console.error('[Sync] Erreur syncFromRemote:', err);
+		syncStore.setError('Erreur de synchronisation');
+		syncStore.setSyncing(false);
+	}
 }
 
 /**
@@ -50,48 +45,44 @@ export async function syncFromRemote() {
  * @param {string} debtId
  */
 export async function syncPaymentsFromRemote(debtId) {
-  try {
-    const { data: payments } = await supabase
-      .from('payments')
-      .select('*, proofs:payment_proofs(*)')
-      .eq('debt_id', debtId);
-
-    if (payments) await localSavePayments(payments);
-  } catch (err) {
-    console.error('[Sync] Erreur syncPayments:', err);
-  }
+	try {
+		const payments = await apiGet('/api/payments', { debt_id: debtId });
+		if (payments) await localSavePayments(payments);
+	} catch (err) {
+		console.error('[Sync] Erreur syncPayments:', err);
+	}
 }
 
 /**
  * Déclencher une synchronisation complète (flush queue + sync depuis remote)
  */
 export async function triggerSync() {
-  if (syncInProgress || !get(isOnline)) return;
-  syncInProgress = true;
+	if (syncInProgress || !get(isOnline)) return;
+	syncInProgress = true;
 
-  try {
-    syncStore.setSyncing(true);
-    syncStore.clearError();
+	try {
+		syncStore.setSyncing(true);
+		syncStore.clearError();
 
-    // 1. Envoyer les opérations en attente
-    const pendingCount = await getPendingCount();
-    if (pendingCount > 0) {
-      const { success, failed } = await flushQueue();
-      console.log(`[Sync] Queue: ${success} succès, ${failed} échoués`);
-    }
+		// 1. Envoyer les opérations en attente
+		const pendingCount = await getPendingCount();
+		if (pendingCount > 0) {
+			const { success, failed } = await flushQueue();
+			console.log(`[Sync] Queue: ${success} succès, ${failed} échoués`);
+		}
 
-    // 2. Récupérer les données fraîches
-    await syncFromRemote();
+		// 2. Récupérer les données fraîches
+		await syncFromRemote();
 
-    syncStore.setPendingCount(0);
-    syncStore.setLastSync(new Date());
-  } catch (err) {
-    console.error('[Sync] Erreur triggerSync:', err);
-    syncStore.setError('Synchronisation échouée');
-  } finally {
-    syncInProgress = false;
-    syncStore.setSyncing(false);
-  }
+		syncStore.setPendingCount(0);
+		syncStore.setLastSync(new Date());
+	} catch (err) {
+		console.error('[Sync] Erreur triggerSync:', err);
+		syncStore.setError('Synchronisation échouée');
+	} finally {
+		syncInProgress = false;
+		syncStore.setSyncing(false);
+	}
 }
 
 /**
@@ -100,23 +91,23 @@ export async function triggerSync() {
  * @returns {() => void} cleanup
  */
 export function initSyncEngine() {
-  // Syncer au retour en ligne
-  const unsubscribe = isOnline.subscribe(async (online) => {
-    if (online) {
-      console.log('[Sync] Retour en ligne — synchronisation...');
-      await triggerSync();
-    }
-  });
+	// Syncer au retour en ligne
+	const unsubscribe = isOnline.subscribe(async (online) => {
+		if (online) {
+			console.log('[Sync] Retour en ligne — synchronisation...');
+			await triggerSync();
+		}
+	});
 
-  // Syncer toutes les 5 minutes si online
-  const interval = setInterval(async () => {
-    if (get(isOnline)) {
-      await triggerSync();
-    }
-  }, 5 * 60_000);
+	// Syncer toutes les 5 minutes si online
+	const interval = setInterval(async () => {
+		if (get(isOnline)) {
+			await triggerSync();
+		}
+	}, 5 * 60_000);
 
-  return () => {
-    unsubscribe();
-    clearInterval(interval);
-  };
+	return () => {
+		unsubscribe();
+		clearInterval(interval);
+	};
 }

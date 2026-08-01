@@ -1,8 +1,16 @@
 <script>
-  import { goto, invalidate } from '$app/navigation';
+  import { goto } from '$app/navigation';
+  import { useClerkContext } from 'svelte-clerk';
   import { registerSchema, extractErrors } from '$lib/utils/validators';
-  import { register, loginWithOAuth } from '$lib/services/auth.service';
-  import { UserPlus, Mail, Lock, User, Eye, EyeOff, Loader2, Check, X } from '@lucide/svelte';
+  import {
+    register,
+    verifyEmailCode,
+    updateProfile,
+    authErrorMessage
+  } from '$lib/services/auth.service';
+  import { UserPlus, Mail, Lock, User, Eye, EyeOff, Loader2, Check, X, MailCheck } from '@lucide/svelte';
+
+  const ctx = useClerkContext();
 
   let full_name = $state('');
   let email = $state('');
@@ -11,12 +19,17 @@
   let terms = $state(false);
   let showPassword = $state(false);
   let loading = $state(false);
-  let success = $state(false);
+
+  /** Étape courante : formulaire, ou saisie du code envoyé par email. */
+  /** @type {'form' | 'verify'} */
+  let step = $state('form');
+  let code = $state('');
+  let codeLoading = $state(false);
+  let codeError = $state('');
 
   /** @type {Record<string, string>} */
   let errors = $state({});
   let globalError = $state('');
-  let oauthLoading = $state('');
 
   // Règles de validation du mot de passe (affichage en temps réel)
   let rules = $derived({
@@ -45,6 +58,18 @@
   );
 
   /**
+   * Le nom complet reste une donnée applicative (table profiles), il est donc
+   * enregistré une fois la session active.
+   */
+  async function saveFullName() {
+    try {
+      await updateProfile({ full_name });
+    } catch (err) {
+      console.error('[Register] Enregistrement du nom échoué:', err);
+    }
+  }
+
+  /**
    * @param {Event} e
    */
   async function handleSubmit(e) {
@@ -60,85 +85,113 @@
 
     loading = true;
     try {
-      const data = await register({ email, password, full_name });
+      const data = await register(ctx.clerk, { email, password });
 
-      if (data.session) {
-        await invalidate('supabase:auth');
-        goto('/');
+      if (data.complete) {
+        await saveFullName();
+        await goto('/', { invalidateAll: true });
       } else {
-        success = true;
+        step = 'verify';
       }
     } catch (err) {
-      globalError = err instanceof Error ? err.message : 'Erreur lors de l\'inscription';
+      globalError = authErrorMessage(err);
     } finally {
       loading = false;
     }
   }
 
   /**
-   * @param {'google'} provider
+   * @param {Event} e
    */
-  async function handleOAuth(provider) {
-    oauthLoading = provider;
+  async function handleVerify(e) {
+    e.preventDefault();
+    codeError = '';
+
+    if (code.trim().length < 6) {
+      codeError = 'Le code doit contenir 6 chiffres';
+      return;
+    }
+
+    codeLoading = true;
     try {
-      await loginWithOAuth(provider);
+      const data = await verifyEmailCode(ctx.clerk, code.trim());
+
+      if (data.complete) {
+        await saveFullName();
+        await goto('/', { invalidateAll: true });
+      } else {
+        codeError = 'Vérification incomplète, réessaie.';
+      }
     } catch (err) {
-      globalError = err instanceof Error ? err.message : 'Erreur de connexion';
-      oauthLoading = '';
+      codeError = authErrorMessage(err);
+    } finally {
+      codeLoading = false;
     }
   }
 </script>
 
 <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-  <h2 class="text-xl font-semibold text-gray-900 mb-6 text-center">Créer un compte</h2>
-
-  {#if success}
-    <div class="text-center space-y-4">
-      <div class="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
-        Inscription réussie ! Vérifie ton email pour confirmer ton compte.
+  {#if step === 'verify'}
+    <!-- ======================== -->
+    <!-- Vérification de l'email -->
+    <!-- ======================== -->
+    <div class="text-center mb-6">
+      <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <MailCheck size={24} class="text-green-600" />
       </div>
-      <a href="/login" class="text-green-600 font-medium hover:underline text-sm">
-        Retour à la connexion
-      </a>
+      <h2 class="text-xl font-semibold text-gray-900">Vérifie ton email</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Nous avons envoyé un code à 6 chiffres à {email}.
+      </p>
     </div>
+
+    {#if codeError}
+      <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+        {codeError}
+      </div>
+    {/if}
+
+    <form onsubmit={handleVerify} class="space-y-4">
+      <div>
+        <input
+          type="text"
+          bind:value={code}
+          placeholder="000000"
+          maxlength="6"
+          class="w-full text-center text-2xl tracking-[0.5em] font-mono py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={codeLoading}
+        class="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+      >
+        {#if codeLoading}
+          <Loader2 size={18} class="animate-spin" />
+          Vérification...
+        {:else}
+          <Check size={18} />
+          Confirmer
+        {/if}
+      </button>
+
+      <button
+        type="button"
+        onclick={() => { step = 'form'; code = ''; codeError = ''; }}
+        class="w-full text-sm text-gray-500 hover:text-gray-700 transition"
+      >
+        ← Modifier mes informations
+      </button>
+    </form>
   {:else}
+    <h2 class="text-xl font-semibold text-gray-900 mb-6 text-center">Créer un compte</h2>
+
     {#if globalError}
       <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
         {globalError}
       </div>
     {/if}
-
-    <!-- Bouton OAuth Google -->
-    <div class="mb-6">
-      <button
-        type="button"
-        onclick={() => handleOAuth('google')}
-        disabled={oauthLoading !== ''}
-        class="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
-      >
-        {#if oauthLoading === 'google'}
-          <Loader2 size={18} class="animate-spin" />
-        {:else}
-          <svg class="w-5 h-5" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-          </svg>
-        {/if}
-        <span class="text-sm font-medium text-gray-700">Continuer avec Google</span>
-      </button>
-    </div>
-
-    <!-- Séparateur -->
-    <div class="relative mb-6">
-      <div class="absolute inset-0 flex items-center">
-        <div class="w-full border-t border-gray-200"></div>
-      </div>
-      <div class="relative flex justify-center text-sm">
-        <span class="bg-white px-4 text-gray-400">ou</span>
-      </div>
-    </div>
 
     <form onsubmit={handleSubmit} class="space-y-4">
       <!-- Nom complet -->
@@ -324,7 +377,7 @@
       <!-- Bouton inscription -->
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || !ctx.isLoaded}
         class="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         {#if loading}

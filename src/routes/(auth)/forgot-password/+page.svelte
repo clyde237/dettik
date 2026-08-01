@@ -1,7 +1,10 @@
 <script>
+  import { useClerkContext } from 'svelte-clerk';
   import { forgotPasswordSchema, extractErrors } from '$lib/utils/validators';
-  import { forgotPassword } from '$lib/services/auth.service';
-  import { Mail, ArrowLeft, Loader2, Send } from '@lucide/svelte';
+  import { forgotPassword, authErrorMessage } from '$lib/services/auth.service';
+  import { Mail, ArrowLeft, Loader2, Send, ArrowRight } from '@lucide/svelte';
+
+  const ctx = useClerkContext();
 
   let email = $state('');
   let loading = $state(false);
@@ -27,10 +30,10 @@
 
     loading = true;
     try {
-      await forgotPassword(email);
+      await forgotPassword(ctx.clerk, email);
       success = true;
     } catch (err) {
-      globalError = err instanceof Error ? err.message : 'Erreur lors de l\'envoi';
+      globalError = authErrorMessage(err);
     } finally {
       loading = false;
     }
@@ -40,14 +43,21 @@
 <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
   <h2 class="text-xl font-semibold text-gray-900 mb-2 text-center">Mot de passe oublié</h2>
   <p class="text-sm text-gray-500 text-center mb-6">
-    Entre ton email pour recevoir un lien de réinitialisation.
+    Entre ton email pour recevoir un code de réinitialisation.
   </p>
 
   {#if success}
     <div class="text-center space-y-4">
       <div class="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
-        Un email de réinitialisation a été envoyé à <strong>{email}</strong>.
+        Un code de réinitialisation a été envoyé à <strong>{email}</strong>.
       </div>
+      <a
+        href="/reset-password"
+        class="w-full inline-flex items-center justify-center gap-2 bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 transition"
+      >
+        Saisir le code
+        <ArrowRight size={18} />
+      </a>
       <a href="/login" class="inline-flex items-center gap-1 text-green-600 font-medium hover:underline text-sm">
         <ArrowLeft size={16} />
         Retour à la connexion
@@ -80,7 +90,7 @@
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || !ctx.isLoaded}
         class="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-2.5 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         {#if loading}
@@ -88,7 +98,7 @@
           Envoi...
         {:else}
           <Send size={18} />
-          Envoyer le lien
+          Envoyer le code
         {/if}
       </button>
     </form>

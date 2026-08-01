@@ -1,4 +1,4 @@
-import { supabase } from '$lib/supabase/client';
+import { apiGet, apiPost, apiDelete } from './api.js';
 
 /**
  * @typedef {Object} Payment
@@ -18,15 +18,8 @@ import { supabase } from '$lib/supabase/client';
  * @param {string} debtId
  * @returns {Promise<Payment[]>}
  */
-export async function getPayments(debtId) {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('*, proofs:payment_proofs(*)')
-    .eq('debt_id', debtId)
-    .order('payment_date', { ascending: false });
-
-  if (error) throw error;
-  return data || [];
+export function getPayments(debtId) {
+	return apiGet('/api/payments', { debt_id: debtId });
 }
 
 /**
@@ -34,19 +27,16 @@ export async function getPayments(debtId) {
  * @param {string} id
  * @returns {Promise<Payment>}
  */
-export async function getPayment(id) {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('*, proofs:payment_proofs(*)')
-    .eq('id', id)
-    .single();
-
-  if (error) throw error;
-  return data;
+export function getPayment(id) {
+	return apiGet(`/api/payments/${id}`);
 }
 
 /**
  * Créer un versement et mettre à jour le remaining_amount
+ *
+ * Le contrôle du montant, l'insertion et la mise à jour de la dette se font
+ * désormais dans une seule transaction côté serveur.
+ *
  * @param {{
  *   debt_id: string,
  *   amount: number,
@@ -56,106 +46,26 @@ export async function getPayment(id) {
  * }} params
  * @returns {Promise<{ payment: Payment, newRemaining: number }>}
  */
-export async function createPayment({ debt_id, amount, payment_date, payment_method, notes }) {
-  // 1. Récupérer la dette pour connaître le remaining
-  const { data: debt, error: debtError } = await supabase
-    .from('debts')
-    .select('remaining_amount, total_amount')
-    .eq('id', debt_id)
-    .single();
-
-  if (debtError) throw debtError;
-
-  const currentRemaining = Number(debt.remaining_amount);
-
-  // Vérifier que le montant ne dépasse pas le restant
-  if (amount > currentRemaining) {
-    throw new Error(`Le montant ne peut pas dépasser ${currentRemaining}`);
-  }
-
-  // 2. Créer le versement
-  const { data: payment, error: paymentError } = await supabase
-    .from('payments')
-    .insert({
-      debt_id,
-      amount,
-      payment_date,
-      payment_method,
-      notes: notes?.trim() || null
-    })
-    .select('*, proofs:payment_proofs(*)')
-    .single();
-
-  if (paymentError) throw paymentError;
-
-  // 3. Mettre à jour le remaining_amount
-  const newRemaining = Math.max(0, currentRemaining - amount);
-  const updateData = {
-    remaining_amount: newRemaining,
-    ...(newRemaining <= 0 ? {
-      status: 'archived',
-      archived_at: new Date().toISOString()
-    } : {})
-  };
-
-  const { error: updateError } = await supabase
-    .from('debts')
-    .update(updateData)
-    .eq('id', debt_id);
-
-  if (updateError) throw updateError;
-
-  return { payment, newRemaining };
+export function createPayment({ debt_id, amount, payment_date, payment_method, notes }) {
+	return apiPost('/api/payments', {
+		debt_id,
+		amount,
+		payment_date,
+		payment_method,
+		notes: notes?.trim() || null
+	});
 }
 
 /**
  * Supprimer un versement et recalculer le remaining
+ *
+ * debtId n'est plus nécessaire — le serveur le retrouve depuis le versement —
+ * mais reste accepté pour ne pas casser les appels existants.
+ *
  * @param {string} paymentId
- * @param {string} debtId
+ * @param {string} [debtId]
  * @returns {Promise<{ newRemaining: number }>}
  */
-export async function deletePayment(paymentId, debtId) {
-  // 1. Récupérer le montant du versement
-  const { data: payment, error: getError } = await supabase
-    .from('payments')
-    .select('amount')
-    .eq('id', paymentId)
-    .single();
-
-  if (getError) throw getError;
-
-  // 2. Supprimer le versement
-  const { error: deleteError } = await supabase
-    .from('payments')
-    .delete()
-    .eq('id', paymentId);
-
-  if (deleteError) throw deleteError;
-
-  // 3. Recalculer le remaining
-  const { data: debt, error: debtError } = await supabase
-    .from('debts')
-    .select('remaining_amount, total_amount')
-    .eq('id', debtId)
-    .single();
-
-  if (debtError) throw debtError;
-
-  const newRemaining = Math.min(
-    Number(debt.total_amount),
-    Number(debt.remaining_amount) + Number(payment.amount)
-  );
-
-  const { error: updateError } = await supabase
-    .from('debts')
-    .update({
-      remaining_amount: newRemaining,
-      status: 'active',
-      archived_at: null
-    })
-    .eq('id', debtId);
-
-  if (updateError) throw updateError;
-
-  return { newRemaining };
+export function deletePayment(paymentId, debtId) {
+	return apiDelete(`/api/payments/${paymentId}`);
 }

@@ -8,7 +8,7 @@
   import { toastSuccess, toastError } from '$lib/stores/notifications';
   import { User, Save, Loader2 } from '@lucide/svelte';
 
-  /** @type {{ full_name: string, email: string } | null} */
+  /** @type {import('$lib/services/auth.service').Profile | null} */
   let profile = $state(null);
   let loading = $state(true);
   let saveLoading = $state(false);
@@ -55,7 +55,7 @@
     <div class="space-y-4">
       <!-- Avatar + email -->
       <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-        <Avatar name={fullName || profile.email} size="lg" />
+        <Avatar name={fullName || profile.email || ''} size="lg" />
         <div>
           <p class="text-sm font-medium text-gray-900">{fullName || 'Sans nom'}</p>
           <p class="text-xs text-gray-500">{profile.email}</p>

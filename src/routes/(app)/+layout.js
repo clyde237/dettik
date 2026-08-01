@@ -2,11 +2,11 @@ import { redirect } from '@sveltejs/kit';
 
 /** @type {import('./$types').LayoutLoad} */
 export async function load({ parent }) {
-  const { session } = await parent();
+  const { userId } = await parent();
 
-  if (!session) {
+  if (!userId) {
     throw redirect(303, '/login');
   }
 
-  return { session };
+  return { userId };
 }

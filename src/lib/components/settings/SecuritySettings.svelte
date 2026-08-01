@@ -3,98 +3,60 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Input from '$lib/components/ui/Input.svelte';
-  import { enrollMFA, unenrollMFA } from '$lib/services/auth.service';
-  import { supabase } from '$lib/supabase/client';
+  import { useClerkContext } from 'svelte-clerk';
+  import { authErrorMessage } from '$lib/services/auth.service';
+  import { resetPasswordSchema, extractErrors } from '$lib/utils/validators';
   import { toastSuccess, toastError } from '$lib/stores/notifications';
-  import { onMount } from 'svelte';
-  import { ShieldCheck, ShieldOff, Loader2 } from '@lucide/svelte';
+  import { ShieldCheck, KeyRound, Loader2 } from '@lucide/svelte';
 
-  let mfaEnabled = $state(false);
-  let mfaLoading = $state(true);
-  let showEnrollModal = $state(false);
-  let showDisableModal = $state(false);
+  // La 2FA TOTP de Supabase n'a pas été reconduite : l'authentification retenue
+  // est email + mot de passe. Cette section gère donc le changement de mot de
+  // passe, délégué à Clerk.
+  const ctx = useClerkContext();
 
-  /** @type {string} */
-  let qrCode = $state('');
-  /** @type {string} */
-  let factorId = $state('');
-  let verifyCode = $state('');
-  let enrollLoading = $state(false);
-  let disableLoading = $state(false);
-  let enrollError = $state('');
+  let showModal = $state(false);
+  let currentPassword = $state('');
+  let password = $state('');
+  let confirm_password = $state('');
+  let loading = $state(false);
+  let error = $state('');
 
-  onMount(async () => {
-    try {
-      const { data } = await supabase.auth.mfa.listFactors();
-      const totpFactors = data?.totp || [];
-      mfaEnabled = totpFactors.length > 0;
-      if (mfaEnabled) {
-        factorId = totpFactors[0].id;
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      mfaLoading = false;
-    }
-  });
-
-  async function handleEnroll() {
-    enrollLoading = true;
-    enrollError = '';
-    try {
-      const data = await enrollMFA();
-      qrCode = data.totp.qr_code;
-      factorId = data.id;
-      showEnrollModal = true;
-    } catch (err) {
-      toastError('Erreur lors de l\'activation 2FA');
-      console.error(err);
-    } finally {
-      enrollLoading = false;
-    }
+  function closeModal() {
+    showModal = false;
+    currentPassword = '';
+    password = '';
+    confirm_password = '';
+    error = '';
   }
 
-  async function handleVerifyEnroll() {
-    if (verifyCode.length !== 6) {
-      enrollError = 'Le code doit contenir 6 chiffres';
+  async function handleUpdatePassword() {
+    error = '';
+
+    const result = resetPasswordSchema.safeParse({ password, confirm_password });
+    if (!result.success) {
+      error = Object.values(extractErrors(result.error))[0] ?? 'Mot de passe invalide';
       return;
     }
 
-    enrollLoading = true;
-    enrollError = '';
-    try {
-      const { data: challenge } = await supabase.auth.mfa.challenge({ factorId });
-      if (!challenge) throw new Error('Challenge échoué');
+    if (!ctx.user) {
+      error = 'Session expirée, reconnecte-toi.';
+      return;
+    }
 
-      await supabase.auth.mfa.verify({
-        factorId,
-        challengeId: challenge.id,
-        code: verifyCode
+    loading = true;
+    try {
+      await ctx.user.updatePassword({
+        newPassword: password,
+        currentPassword: currentPassword || undefined
       });
 
-      mfaEnabled = true;
-      showEnrollModal = false;
-      verifyCode = '';
-      toastSuccess('Authentification 2FA activée');
+      closeModal();
+      toastSuccess('Mot de passe mis à jour');
     } catch (err) {
-      enrollError = 'Code invalide. Réessayez.';
+      error = authErrorMessage(err);
+      toastError('Erreur lors de la mise à jour');
     } finally {
-      enrollLoading = false;
-    }
-  }
-
-  async function handleDisable() {
-    disableLoading = true;
-    try {
-      await unenrollMFA(factorId);
-      mfaEnabled = false;
-      showDisableModal = false;
-      toastSuccess('Authentification 2FA désactivée');
-    } catch (err) {
-      toastError('Erreur lors de la désactivation');
-      console.error(err);
-    } finally {
-      disableLoading = false;
+      loading = false;
     }
   }
 </script>
@@ -105,7 +67,7 @@
     Sécurité
   </h3>
 
-  {#if mfaLoading}
+  {#if !ctx.isLoaded}
     <div class="flex items-center gap-2 text-gray-400">
       <Loader2 size={16} class="animate-spin" />
       <span class="text-sm">Chargement...</span>
@@ -113,85 +75,56 @@
   {:else}
     <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
       <div>
-        <p class="text-sm font-medium text-gray-900">Authentification à deux facteurs (2FA)</p>
+        <p class="text-sm font-medium text-gray-900">Mot de passe</p>
         <p class="text-xs text-gray-500 mt-0.5">
-          {mfaEnabled
-            ? 'Activée — Votre compte est protégé'
-            : 'Désactivée — Ajoutez une couche de sécurité'}
+          Modifie le mot de passe de ton compte
         </p>
       </div>
 
-      {#if mfaEnabled}
-        <Button variant="outline" size="sm" onclick={() => showDisableModal = true}>
-          <ShieldOff size={14} />
-          Désactiver
-        </Button>
-      {:else}
-        <Button variant="primary" size="sm" onclick={handleEnroll} loading={enrollLoading}>
-          <ShieldCheck size={14} />
-          Activer
-        </Button>
-      {/if}
+      <Button variant="primary" size="sm" onclick={() => showModal = true}>
+        <KeyRound size={14} />
+        Modifier
+      </Button>
     </div>
   {/if}
 </Card>
 
-<!-- Modal activation 2FA -->
-<Modal bind:open={showEnrollModal} title="Activer la 2FA" size="sm">
+<!-- Modal changement de mot de passe -->
+<Modal bind:open={showModal} title="Modifier le mot de passe" size="sm">
   <div class="space-y-4">
-    <p class="text-sm text-gray-600">
-      Scannez ce QR code avec votre application d'authentification
-      (Google Authenticator, Authy, etc.)
-    </p>
-
-    {#if qrCode}
-      <div class="flex justify-center p-4 bg-white rounded-xl border border-gray-200">
-        <img src={qrCode} alt="QR Code 2FA" class="w-48 h-48" />
-      </div>
-    {/if}
-
-    <p class="text-sm text-gray-600">
-      Entrez le code à 6 chiffres généré par l'application :
-    </p>
-
-    {#if enrollError}
+    {#if error}
       <div class="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-        {enrollError}
+        {error}
       </div>
     {/if}
 
     <Input
-      type="text"
-      bind:value={verifyCode}
-      placeholder="000000"
-      class="text-center"
+      type="password"
+      label="Mot de passe actuel"
+      bind:value={currentPassword}
+      placeholder="••••••••"
+    />
+
+    <Input
+      type="password"
+      label="Nouveau mot de passe"
+      bind:value={password}
+      placeholder="8 caractères minimum"
+    />
+
+    <Input
+      type="password"
+      label="Confirmer"
+      bind:value={confirm_password}
+      placeholder="Retapez le mot de passe"
     />
 
     <div class="flex justify-end gap-3">
-      <Button variant="secondary" onclick={() => showEnrollModal = false}>
+      <Button variant="secondary" onclick={closeModal}>
         Annuler
       </Button>
-      <Button onclick={handleVerifyEnroll} loading={enrollLoading}>
-        Vérifier et activer
-      </Button>
-    </div>
-  </div>
-</Modal>
-
-<!-- Modal désactivation 2FA -->
-<Modal bind:open={showDisableModal} title="Désactiver la 2FA" size="sm">
-  <div class="space-y-4">
-    <p class="text-sm text-gray-600">
-      Êtes-vous sûr de vouloir désactiver l'authentification à deux facteurs ?
-      Votre compte sera moins protégé.
-    </p>
-
-    <div class="flex justify-end gap-3">
-      <Button variant="secondary" onclick={() => showDisableModal = false}>
-        Annuler
-      </Button>
-      <Button variant="danger" onclick={handleDisable} loading={disableLoading}>
-        Désactiver
+      <Button onclick={handleUpdatePassword} loading={loading}>
+        Mettre à jour
       </Button>
     </div>
   </div>

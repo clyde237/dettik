@@ -37,8 +37,15 @@ sw.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') return;
-  if (url.hostname.includes('supabase.co')) return; // Ne pas cacher les requêtes API
   if (!url.protocol.startsWith('http')) return;
+
+  // Les données utilisateur passent désormais par /api sur la même origine :
+  // sans cette exclusion, la stratégie « stale while revalidate » ci-dessous les
+  // mettrait en cache et pourrait les resservir après une déconnexion.
+  if (url.pathname.startsWith('/api/')) return;
+
+  // Requêtes tierces (Clerk, Vercel Blob…) : jamais mises en cache.
+  if (url.origin !== self.location.origin) return;
 
   // Assets précachés → Cache First
   if (PRECACHE_ASSETS.includes(url.pathname)) {

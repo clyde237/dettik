@@ -1,17 +1,11 @@
-import { supabase } from '$lib/supabase/client';
+import { apiGet, apiPost, apiPatch, apiDelete } from './api.js';
 
 /**
  * Récupérer toutes les personnes de l'utilisateur connecté
  * @returns {Promise<Array>}
  */
-export async function getPersons() {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .order('name', { ascending: true });
-
-  if (error) throw error;
-  return data || [];
+export function getPersons() {
+	return apiGet('/api/persons');
 }
 
 /**
@@ -19,15 +13,8 @@ export async function getPersons() {
  * @param {string} id
  * @returns {Promise<Object>}
  */
-export async function getPerson(id) {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) throw error;
-  return data;
+export function getPerson(id) {
+	return apiGet(`/api/persons/${id}`);
 }
 
 /**
@@ -35,20 +22,12 @@ export async function getPerson(id) {
  * @param {string} query
  * @returns {Promise<Array>}
  */
-export async function searchPersons(query) {
-  if (!query || query.trim().length < 1) {
-    return getPersons();
-  }
+export function searchPersons(query) {
+	if (!query || query.trim().length < 1) {
+		return getPersons();
+	}
 
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .ilike('name', `%${query.trim()}%`)
-    .order('name', { ascending: true })
-    .limit(10);
-
-  if (error) throw error;
-  return data || [];
+	return apiGet('/api/persons', { q: query.trim() });
 }
 
 /**
@@ -56,27 +35,8 @@ export async function searchPersons(query) {
  * @param {{ name: string, phone?: string, email?: string, notes?: string }} params
  * @returns {Promise<Object>}
  */
-export async function createPerson({ name, phone, email, notes }) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Non connecté');
-
-  // Nettoyer les champs vides
-  const personData = {
-    user_id: user.id,
-    name: name.trim(),
-    phone: phone?.trim() || null,
-    email: email?.trim() || null,
-    notes: notes?.trim() || null
-  };
-
-  const { data, error } = await supabase
-    .from('persons')
-    .insert(personData)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+export function createPerson({ name, phone, email, notes }) {
+	return apiPost('/api/persons', { name, phone, email, notes });
 }
 
 /**
@@ -85,25 +45,8 @@ export async function createPerson({ name, phone, email, notes }) {
  * @param {{ name?: string, phone?: string, email?: string, notes?: string }} updates
  * @returns {Promise<Object>}
  */
-export async function updatePerson(id, updates) {
-  // Nettoyer les champs
-  /** @type {Record<string, any>} */
-  const cleanUpdates = {};
-
-  if (updates.name !== undefined) cleanUpdates.name = updates.name.trim();
-  if (updates.phone !== undefined) cleanUpdates.phone = updates.phone.trim() || null;
-  if (updates.email !== undefined) cleanUpdates.email = updates.email.trim() || null;
-  if (updates.notes !== undefined) cleanUpdates.notes = updates.notes.trim() || null;
-
-  const { data, error } = await supabase
-    .from('persons')
-    .update(cleanUpdates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+export function updatePerson(id, updates) {
+	return apiPatch(`/api/persons/${id}`, updates);
 }
 
 /**
@@ -111,12 +54,7 @@ export async function updatePerson(id, updates) {
  * @param {string} id
  */
 export async function deletePerson(id) {
-  const { error } = await supabase
-    .from('persons')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
+	await apiDelete(`/api/persons/${id}`);
 }
 
 /**
@@ -124,14 +62,6 @@ export async function deletePerson(id) {
  * @param {string} name
  * @returns {Promise<Object|null>}
  */
-export async function findPersonByName(name) {
-  const { data, error } = await supabase
-    .from('persons')
-    .select('*')
-    .ilike('name', name.trim())
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data;
+export function findPersonByName(name) {
+	return apiGet('/api/persons', { name: name.trim() });
 }

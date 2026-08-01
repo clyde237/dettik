@@ -1,30 +1,24 @@
 <script>
   import Card from '$lib/components/ui/Card.svelte';
   import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+  import { useClerkContext } from 'svelte-clerk';
   import { logout } from '$lib/services/auth.service';
-  import { supabase } from '$lib/supabase/client';
-  import { goto, invalidate } from '$app/navigation';
-  import { toastSuccess, toastError } from '$lib/stores/notifications';
+  import { goto } from '$app/navigation';
+  import { toastError } from '$lib/stores/notifications';
   import { LogOut, Trash2 } from '@lucide/svelte';
+
+  const ctx = useClerkContext();
 
   let showDeleteAccount = $state(false);
 
   async function handleLogout() {
-    await logout();
-    await invalidate('supabase:auth');
-    goto('/login');
+    await logout(ctx.clerk);
+    await goto('/login', { invalidateAll: true });
   }
 
   async function handleDeleteAccount() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      toastError('Contactez le support pour supprimer votre compte');
-      showDeleteAccount = false;
-    } catch (err) {
-      toastError('Erreur');
-    }
+    toastError('Contactez le support pour supprimer votre compte');
+    showDeleteAccount = false;
   }
 </script>
 

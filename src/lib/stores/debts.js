@@ -12,7 +12,7 @@ import { localGetDebts, localSaveDebt, localSaveDebts } from '$lib/db/debts.js';
 import { isOnline } from '$lib/sync/online.js';
 import { enqueue } from '$lib/db/sync-queue.js';
 import { syncStore } from '$lib/stores/sync.js';
-import { supabase } from '$lib/supabase/client';
+import { getCurrentUserId } from '$lib/stores/session.js';
 
 /**
  * @typedef {import('$lib/services/debts.service').Debt} Debt
@@ -99,8 +99,8 @@ export async function loadDebts() {
       debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
     } else {
       // Hors ligne : charger depuis IndexedDB
-      const { data: { user } } = await supabase.auth.getUser();
-      const data = user ? await localGetDebts(user.id) : [];
+      const userId = getCurrentUserId();
+      const data = userId ? await localGetDebts(userId) : [];
       debts.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
       if (data.length > 0) {
         toastWarning('Mode hors ligne — données locales affichées');
@@ -109,8 +109,8 @@ export async function loadDebts() {
   } catch (err) {
     // Fallback sur cache local en cas d'erreur réseau
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const cached = user ? await localGetDebts(user.id) : [];
+      const userId = getCurrentUserId();
+      const cached = userId ? await localGetDebts(userId) : [];
       debts.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
       if (cached.length > 0) {
         toastWarning('Connexion impossible — données locales affichées');
@@ -138,11 +138,11 @@ export async function addDebt(data) {
       toastSuccess('Dette ajoutée');
     } else {
       // Hors ligne : créer localement + mettre en file de sync
-      const { data: { user } } = await supabase.auth.getUser();
+      const userId = getCurrentUserId();
       newDebt = {
         ...data,
         id: crypto.randomUUID(),
-        user_id: user?.id || '',
+        user_id: userId || '',
         remaining_amount: data.total_amount,
         status: /** @type {const} */ ('active'),
         created_at: new Date().toISOString(),

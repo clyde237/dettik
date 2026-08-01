@@ -9,7 +9,7 @@ import {
 import { toastSuccess, toastError } from '$lib/stores/notifications';
 import { localGetPersons, localSavePerson, localSavePersons } from '$lib/db/persons.js';
 import { isOnline } from '$lib/sync/online.js';
-import { supabase } from '$lib/supabase/client';
+import { getCurrentUserId } from '$lib/stores/session.js';
 
 /**
  * @typedef {Object} Person
@@ -61,14 +61,14 @@ export async function loadPersons() {
       await localSavePersons(data);
       persons.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
     } else {
-      const { data: { user } } = await supabase.auth.getUser();
-      const data = user ? await localGetPersons(user.id) : [];
+      const userId = getCurrentUserId();
+      const data = userId ? await localGetPersons(userId) : [];
       persons.update((state) => ({ ...state, list: data, loading: false, loaded: true }));
     }
   } catch (err) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const cached = user ? await localGetPersons(user.id) : [];
+      const userId = getCurrentUserId();
+      const cached = userId ? await localGetPersons(userId) : [];
       persons.update((state) => ({ ...state, list: cached, loading: false, loaded: true }));
     } catch {
       persons.update((state) => ({ ...state, loading: false }));
